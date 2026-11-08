@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Liste de révision rapide des radicaux, kanji et vocabulaire WaniKani, avec sens et lectures masqués.">
+  <title>Révision rapide WaniKani</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>Révision rapide WaniKani</h1>
+    <button id="logout" class="ghost" type="button" hidden>Changer de jeton</button>
+  </header>
+
+  <main class="wrap">
+    <!-- Connexion : saisie du jeton d'API -->
+    <section id="login" class="panel" hidden>
+      <h2>Connexion</h2>
+      <p>
+        Entrez votre jeton d'API WaniKani. Un jeton en lecture seule suffit.
+        Il reste dans ce navigateur (localStorage) et n'est envoyé qu'à <code>api.wanikani.com</code>.
+      </p>
+      <form id="login-form" class="stack">
+        <label for="token">Jeton d'API</label>
+        <input id="token" type="password" autocomplete="off" spellcheck="false" required>
+        <button type="submit" class="primary">Enregistrer et continuer</button>
+      </form>
+      <p class="hint">
+        Créez un jeton sur
+        <a href="https://www.wanikani.com/settings/personal_access_tokens" target="_blank" rel="noopener">wanikani.com → Settings → API Tokens</a>.
+      </p>
+    </section>
+
+    <!-- Filtres -->
+    <section id="filters" class="panel" hidden>
+      <form id="filters-form" class="filters">
+        <fieldset class="types">
+          <legend>Types</legend>
+          <label class="chip type-radical"><input type="checkbox" name="types" value="radical" checked> Radicaux</label>
+          <label class="chip type-kanji"><input type="checkbox" name="types" value="kanji" checked> Kanji</label>
+          <label class="chip type-vocabulary"><input type="checkbox" name="types" value="vocabulary" checked> Vocabulaire</label>
+        </fieldset>
+
+        <div class="row">
+          <label>Niveau min
+            <select id="level-min"></select>
+          </label>
+          <label>Niveau max
+            <select id="level-max"></select>
+          </label>
+        </div>
+
+        <label>Statut
+          <select id="status">
+            <option value="all">Tous les éléments</option>
+            <option value="started">Déjà commencés</option>
+            <option value="review">À réviser maintenant</option>
+          </select>
+        </label>
+
+        <button type="submit" class="primary">Charger la liste</button>
+      </form>
+    </section>
+
+    <!-- Résultats -->
+    <section id="results" hidden>
+      <div class="toolbar">
+        <span id="count" aria-live="polite"></span>
+        <div class="actions">
+          <button id="shuffle" type="button">Mélanger</button>
+          <button id="show-all" type="button">Tout afficher</button>
+          <button id="hide-all" type="button">Tout masquer</button>
+        </div>
+      </div>
+      <ol id="list" class="list"></ol>
+    </section>
+
+    <p id="message" class="status" role="status" aria-live="polite"></p>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,353 @@
+:root {
+  --bg: #f5f4f0;
+  --panel: #ffffff;
+  --text: #1d1d1f;
+  --muted: #6b6b70;
+  --border: #dcdad3;
+  --accent: #2b6cb0;
+  --accent-text: #ffffff;
+  --radical: #00a5e0;
+  --kanji: #e6007e;
+  --vocab: #9b30e0;
+  --img-filter: none;
+  --glyph-font: "Noto Sans JP", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", "Meiryo", "Noto Sans CJK JP", sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #161618;
+    --panel: #1f1f22;
+    --text: #ececef;
+    --muted: #9a9aa2;
+    --border: #3a3a40;
+    --accent: #6fa8e8;
+    --accent-text: #111;
+    --img-filter: invert(1);
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: #161618;
+  --panel: #1f1f22;
+  --text: #ececef;
+  --muted: #9a9aa2;
+  --border: #3a3a40;
+  --accent: #6fa8e8;
+  --accent-text: #111;
+  --img-filter: invert(1);
+}
+
+* { box-sizing: border-box; }
+
+[hidden] { display: none !important; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+code { font-size: 0.9em; }
+
+a { color: var(--accent); }
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.9rem 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.topbar h1 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.wrap {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 16px;
+  display: grid;
+  gap: 1rem;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1rem 1.1rem;
+}
+
+.panel h2 {
+  margin: 0 0 0.4rem;
+  font-size: 1.05rem;
+}
+
+.panel p { margin: 0.4rem 0; }
+
+.hint { color: var(--muted); font-size: 0.9rem; }
+
+.stack {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.filters {
+  display: grid;
+  gap: 0.9rem;
+}
+
+fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+legend {
+  font-weight: 600;
+  margin-bottom: 0.4rem;
+  width: 100%;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+label {
+  display: grid;
+  gap: 0.25rem;
+  font-size: 0.92rem;
+  color: var(--muted);
+}
+
+input[type="password"],
+select {
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.5rem 0.6rem;
+  width: 100%;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.8rem;
+  border: 2px solid var(--chip-color, var(--border));
+  border-radius: 999px;
+  color: var(--text);
+  cursor: pointer;
+  user-select: none;
+}
+
+.chip input { accent-color: var(--chip-color, var(--accent)); margin: 0; }
+.chip.type-radical { --chip-color: var(--radical); }
+.chip.type-kanji { --chip-color: var(--kanji); }
+.chip.type-vocabulary { --chip-color: var(--vocab); }
+
+button {
+  font: inherit;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.5rem 0.9rem;
+  cursor: pointer;
+}
+
+button:hover { border-color: var(--accent); }
+
+button.primary {
+  background: var(--accent);
+  color: var(--accent-text);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+button.ghost {
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+button:disabled { opacity: 0.5; cursor: progress; }
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin-bottom: 0.75rem;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.actions button { font-size: 0.88rem; padding: 0.4rem 0.7rem; }
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.6rem;
+}
+
+.card {
+  display: grid;
+  grid-template-columns: 5.5rem 1fr;
+  align-items: stretch;
+  gap: 0.9rem;
+  min-height: 6.5rem;
+  padding: 0.7rem 0.9rem 0.7rem 0;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-left: 6px solid var(--type-color);
+  border-radius: 10px;
+  cursor: pointer;
+  user-select: none;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.card:hover { border-color: var(--type-color); }
+
+.card:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.card.type-radical { --type-color: var(--radical); }
+.card.type-kanji { --type-color: var(--kanji); }
+.card.type-vocabulary { --type-color: var(--vocab); }
+
+.glyph-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding-left: 0.4rem;
+}
+
+.glyph {
+  font-family: var(--glyph-font);
+  font-size: 2.3rem;
+  line-height: 1.1;
+  text-align: center;
+  word-break: keep-all;
+  max-width: 100%;
+  color: var(--text);
+}
+
+.glyph.long { font-size: 1.5rem; }
+
+.glyph img {
+  display: block;
+  width: 2.8rem;
+  height: 2.8rem;
+  filter: var(--img-filter);
+}
+
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.25rem;
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+
+.tags span {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 0.4rem;
+  white-space: nowrap;
+}
+
+.answer {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.placeholder {
+  color: var(--muted);
+  font-style: italic;
+  font-size: 0.92rem;
+}
+
+.meanings {
+  font-size: 1.15rem;
+  font-weight: 600;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.meanings .secondary {
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.readings {
+  display: grid;
+  gap: 0.15rem;
+  font-size: 0.95rem;
+}
+
+.readings .label {
+  font-size: 0.78rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-right: 0.35rem;
+}
+
+.readings .jp {
+  font-family: var(--glyph-font);
+  font-size: 1.05rem;
+}
+
+.readings .secondary {
+  color: var(--muted);
+}
+
+.status {
+  min-height: 1.5rem;
+  color: var(--muted);
+  text-align: center;
+  margin: 0;
+}
+
+.status.error { color: #c0392b; }
+
+@media (max-width: 480px) {
+  .card { grid-template-columns: 4.5rem 1fr; gap: 0.6rem; }
+  .glyph { font-size: 1.9rem; }
+  .glyph.long { font-size: 1.25rem; }
+  .meanings { font-size: 1.05rem; }
+  .row { grid-template-columns: 1fr; }
+}
