@@ -1,0 +1,42 @@
+name: Track WaniKani misses
+
+# Runs on the default branch only (GitHub schedules always use it).
+on:
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+
+# Only what is needed: write access to commit the journal. No pull_request trigger, so forks never get the secret.
+permissions:
+  contents: write
+
+concurrency:
+  group: track-misses
+  cancel-in-progress: false
+
+jobs:
+  track:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Poll WaniKani review statistics
+        env:
+          WANIKANI_TOKEN: ${{ secrets.WANIKANI_TOKEN }}
+        run: python3 scripts/track_misses.py
+
+      - name: Commit the journal if it changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/state.json data/misses.json
+          if git diff --cached --quiet; then
+            echo "No change to commit"
+          else
+            git commit -m "Update WaniKani miss journal"
+            git push
+          fi

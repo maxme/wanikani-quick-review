@@ -76,11 +76,13 @@
         <label>Mistakes
           <select id="mistakes">
             <option value="any">Any</option>
-            <option value="since-last-visit">Missed since my previous visit</option>
+            <option value="missed-24h">Missed in the last 24 h</option>
+            <option value="missed-48h">Missed in the last 48 h</option>
+            <option value="missed-7d">Missed in the last 7 days</option>
             <option value="leech">Leeches (3+ misses, under 85% correct)</option>
             <option value="never">Never missed</option>
           </select>
-          <small class="hint">WaniKani no longer exposes the time of each answer. A miss is detected when the list loads, by comparing with your previous visit, so the first visit has no baseline.</small>
+          <small class="hint">Misses come from a journal updated hourly by GitHub Actions, which compares your WaniKani answer totals. Misses are only known from the time the journal started.</small>
         </label>
 
         <label class="check">

@@ -11,7 +11,7 @@ Each item shows its Japanese text on the left. The **meaning** and **reading** s
   - Types: radicals, kanji, vocabulary. Radicals show meaning only (no reading).
   - Level range.
   - Progress: all, not started, started, reviews available now, burned.
-  - Mistakes: any, missed since your previous visit, leeches, never missed.
+  - Mistakes: any, missed in the last 24 h / 48 h / 7 days, leeches, never missed.
 - **Pages**: 100 items per page, with previous/next navigation.
 - **Audio (vocabulary only)**: revealing a vocabulary card plays its pronunciation automatically (toggle *Autoplay vocabulary audio when revealed*). *▶ Play* replays it, and *⇄ Other voice* switches voice actor when WaniKani provides more than one. Audio is only played on a click, never when the list is re-rendered, and clicking the audio buttons does not hide the card.
 - **Actions**: *Shuffle*, *Show all*, *Hide all* (applies to the whole filtered list).
@@ -20,15 +20,21 @@ Each item shows its Japanese text on the left. The **meaning** and **reading** s
 ### Mistake definitions
 
 WaniKani no longer exposes the time of each answer: `GET /reviews` is deprecated and returns nothing.
-The app uses `review_statistics` instead, which holds the wrong-answer totals per item.
 
-- *Missed since your previous visit*: each load syncs the statistics incrementally (`updated_after`) and compares
-  each item's wrong-answer total with the value seen on the previous load. An increase is recorded as a miss at
-  the time of that load. The first visit has no baseline, so it shows nothing.
+- *Missed in the last 24 h / 48 h / 7 days*: read from `data/misses.json`, a journal that GitHub Actions updates every hour
+  (`.github/workflows/track-misses.yml`, script `scripts/track_misses.py`). The script compares each item's wrong-answer
+  total with the previous run. The journal only starts from the first run, so earlier misses are unknown. Precision is about one hour.
 - *Leech*: at least 3 wrong answers in total, and under 85% correct overall (thresholds at the top of `app.js`).
 - *Never missed*: at least one answer, and no wrong answer.
 
-The statistics cache is stored in the browser and cleared on *Change token*.
+#### Setting up the miss journal
+
+1. Create a read-only WaniKani token and add it as a repository secret named `WANIKANI_TOKEN`
+   (*Settings → Secrets and variables → Actions*). Never commit the token.
+2. The workflow runs on the default branch (`main`). Trigger it once from the *Actions* tab to record the baseline.
+
+The journal is in the public repository, so it is visible to anyone who can see the repository.
+
 
 ## Run locally
 

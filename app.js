@@ -17,6 +17,8 @@
   const STORAGE_PREFS = 'wk-quick-review.prefs';
   const STORAGE_THEME = 'wk-quick-review.theme';
   const STORAGE_STATS = 'wk-quick-review.stats';
+  // Miss journal written hourly by GitHub Actions (scripts/track_misses.py) to the default branch.
+  const JOURNAL_URL = 'https://raw.githubusercontent.com/maxme/wanikani-quick-review/main/data/misses.json';
 
   const TYPE_LABEL = { radical: 'Radical', kanji: 'Kanji', vocabulary: 'Vocabulary' };
   const TYPE_ORDER = { radical: 0, kanji: 1, vocabulary: 2 };
@@ -26,12 +28,9 @@
   const SRS_LABEL = { 1: 'Apprentice', 2: 'Apprentice', 3: 'Apprentice', 4: 'Apprentice', 5: 'Guru', 6: 'Guru', 7: 'Master', 8: 'Enlightened', 9: 'Burned' };
 
   const PROGRESS_VALUES = ['all', 'not-started', 'started', 'review', 'burned'];
-  const MISTAKE_VALUES = ['any', 'since-last-visit', 'leech', 'never'];
+  const MISTAKE_VALUES = ['any', 'missed-24h', 'missed-48h', 'missed-7d', 'leech', 'never'];
   // Values used by earlier versions, mapped to the current ones when preferences are restored.
-  const OLD_MISTAKE_VALUES = {
-    '24h': 'since-last-visit', '48h': 'since-last-visit', '7d': 'since-last-visit',
-    'missed-24h': 'since-last-visit', 'missed-48h': 'since-last-visit', 'missed-7d': 'since-last-visit',
-  };
+  const OLD_MISTAKE_VALUES = { 'since-last-visit': 'any' };
   const THEME_LABEL = { auto: 'auto', light: 'light', dark: 'dark' };
   const THEME_NEXT = { auto: 'light', light: 'dark', dark: 'auto' };
 
@@ -65,7 +64,7 @@
   // raw: subjects and assignments as returned by the API (null until loaded)
   // stats: Map subject id -> review history built from the local statistics cache
   // voice: chosen pronunciation voice per vocabulary id
-  const state = { raw: null, stats: new Map(), previousVisit: null, items: [], view: [], page: 0, revealed: new Set(), voice: new Map() };
+  const state = { raw: null, stats: new Map(), journal: new Map(), items: [], view: [], page: 0, revealed: new Set(), voice: new Map() };
 
   // ---------- Local storage (token, preferences, theme, statistics cache) ----------
   function storageGet(key) {
@@ -305,7 +304,6 @@
   }
 
   // Syncs review_statistics (only changed records after the first sync) and returns the updated cache.
-  // The cache also keeps previousVisit: the time of the load before this one, used by "since last visit".
   async function syncStats(token) {
     const cache = loadStatsCache();
     const now = Date.now();
@@ -326,11 +324,10 @@
       cache.s[id] = [...next, lastMissAt];
     }
 
-    const previousVisit = cache.visitedAt;
     cache.syncedAt = nextSync;
     cache.visitedAt = now;
     saveStatsCache(cache);
-    return { ...cache, previousVisit };
+    return cache;
   }
 
   function buildStatsMap(cache) {
@@ -397,11 +394,30 @@
     }
   }
 
-  function matchesMistakes(item, value) {
+  // Latest miss time per subject, from the journal. Returns null when the journal could not be read.
+  async function fetchJournal() {
+    try {
+      const res = await fetch(JOURNAL_URL, { cache: 'no-store' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const entries = await res.json();
+      const latest = new Map();
+      for (const { subject_id: id, detected_at: at } of entries) {
+        const t = Date.parse(at);
+        if (t > (latest.get(id) ?? 0)) latest.set(id, t);
+      }
+      return latest;
+    } catch {
+      return null;
+    }
+  }
+
+  function matchesMistakes(item, value, now) {
     const h = item.history;
+    const missedWithin = (hours) => (state.journal.get(item.id) ?? 0) >= now - hours * HOUR;
     switch (value) {
-      case 'since-last-visit':
-        return state.previousVisit !== null && h.lastMissAt > 0 && h.lastMissAt >= state.previousVisit;
+      case 'missed-24h': return missedWithin(24);
+      case 'missed-48h': return missedWithin(48);
+      case 'missed-7d': return missedWithin(24 * 7);
       case 'leech': return item.leech;
       case 'never': return h.answered > 0 && h.wrong === 0;
       default: return true;
@@ -617,12 +633,17 @@
         fetchAll(`${API_BASE}/assignments?${new URLSearchParams({ subject_types: types.join(','), levels })}`, token),
         syncStats(token),
       ]);
+      const journal = await fetchJournal();
+      state.journal = journal ?? new Map();
       state.raw = { subjects, assignments };
       state.stats = buildStatsMap(cache);
-      state.previousVisit = cache.previousVisit ?? null;
       state.items = buildItems();
       applyFilters();
-      setMessage(state.items.length ? '' : 'No items for these filters.');
+      if (journal === null) {
+        setMessage('The miss journal could not be loaded: "missed" filters are empty.', true);
+      } else {
+        setMessage(state.items.length ? '' : 'No items for these filters.');
+      }
     } catch (err) {
       setMessage(err.message || 'Unknown error.', true);
     } finally {
@@ -662,7 +683,6 @@
     storageRemove(STORAGE_STATS);
     state.raw = null;
     state.stats = new Map();
-    state.previousVisit = null;
     state.items = [];
     state.view = [];
     state.page = 0;
