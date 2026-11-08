@@ -9,7 +9,7 @@
 
   // Leech: at least LEECH_MIN_MISTAKES wrong answers and an overall correct rate below LEECH_MAX_PERCENT.
   // Calibrated on a real account, where most items sit between 83% and 96% correct.
-  const LEECH_MIN_MISTAKES = 3;
+  const LEECH_MIN_MISTAKES = 10;
   const LEECH_MAX_PERCENT = 75;
 
   // Storage keys are unchanged so existing tokens and preferences keep working.
