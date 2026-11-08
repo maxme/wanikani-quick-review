@@ -28,7 +28,7 @@ Recent misses are deduced from `review_statistics`, synced incrementally with `u
 - `data_updated_at` of the statistic is the time of that last review.
 - *Missed in the last 24 h / 48 h / 7 days*: the last review had a miss and happened in that period.
   A miss followed by a correct review in the same period is not shown.
-- *Leech*: at least 10 wrong answers in total, and under 75% correct overall (thresholds at the top of `app.js`).
+- *Leech*: at least 10 wrong answers in total, and under 80% correct overall (thresholds at the top of `app.js`).
 - *Never missed*: at least one answer, and no wrong answer.
 
 The statistics cache is stored in the browser and cleared on *Change token*.
