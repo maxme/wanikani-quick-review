@@ -24,7 +24,7 @@ WaniKani no longer exposes the time of each answer: `GET /reviews` is deprecated
 - *Missed in the last 24 h / 48 h / 7 days*: read from `data/misses.json`, a journal that GitHub Actions updates every hour
   (`.github/workflows/track-misses.yml`, script `scripts/track_misses.py`). The script compares each item's wrong-answer
   total with the previous run. The journal only starts from the first run, so earlier misses are unknown. Precision is about one hour.
-- *Leech*: at least 3 wrong answers in total, and under 75% correct overall (thresholds at the top of `app.js`).
+- *Leech*: at least 10 wrong answers in total, and under 75% correct overall (thresholds at the top of `app.js`).
 - *Never missed*: at least one answer, and no wrong answer.
 
 #### Setting up the miss journal
