@@ -17,8 +17,9 @@
   const STORAGE_PREFS = 'wk-quick-review.prefs';
   const STORAGE_THEME = 'wk-quick-review.theme';
   const STORAGE_STATS = 'wk-quick-review.stats';
-  // Miss journal written hourly by GitHub Actions (scripts/track_misses.py) to the default branch.
-  const JOURNAL_URL = 'https://raw.githubusercontent.com/maxme/wanikani-quick-review/main/data/misses.json';
+  // Miss journal written hourly by GitHub Actions (scripts/track_misses.py).
+  // Served by GitHub Pages next to the app. The track-misses workflow redeploys the site after each update.
+  const JOURNAL_URL = 'data/misses.json';
 
   const TYPE_LABEL = { radical: 'Radical', kanji: 'Kanji', vocabulary: 'Vocabulary' };
   const TYPE_ORDER = { radical: 0, kanji: 1, vocabulary: 2 };
