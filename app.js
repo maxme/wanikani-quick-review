@@ -21,6 +21,8 @@
   const OLD_STORAGE_STATS = 'wk-quick-review.stats';
 
   const TYPE_LABEL = { radical: 'Radical', kanji: 'Kanji', vocabulary: 'Vocabulary' };
+  // Shorter labels for the card tags, so they fit on one line on phones.
+  const TYPE_TAG = { radical: 'Radical', kanji: 'Kanji', vocabulary: 'Vocab' };
   const TYPE_ORDER = { radical: 0, kanji: 1, vocabulary: 2 };
   // The plain "reading" group of vocabulary gets no row label: the card already says "Reading".
   const READING_LABEL = { onyomi: 'On’yomi', kunyomi: 'Kun’yomi', nanori: 'Nanori', reading: '' };
@@ -425,57 +427,64 @@
     return parts;
   }
 
-  function block(label, content) {
-    return el('div', { class: 'block' }, el('div', { class: 'block-label' }, label), content);
-  }
-
-  function buildAudioRow(item, voiceIndex, handlers) {
+  // Small round audio buttons shown at the end of the reading line.
+  function buildAudioButtons(item, voiceIndex, handlers) {
     const audio = item.audios[voiceIndex];
     const play = el('button', {
       type: 'button',
       class: 'audio-btn play-btn',
+      title: `Play (${audio.voice})`,
       'aria-label': `Play pronunciation (${audio.voice})`,
-    }, '▶ Play');
+    }, '▶');
     play.addEventListener('click', (e) => {
       e.stopPropagation();
       handlers.onPlay();
     });
-
-    const children = [play];
+    const buttons = [play];
     if (item.audios.length > 1) {
-      const other = el('button', { type: 'button', class: 'audio-btn', title: 'Hear another voice' }, '⇄ Other voice');
+      const other = el('button', {
+        type: 'button',
+        class: 'audio-btn',
+        title: 'Hear another voice',
+        'aria-label': 'Hear another voice',
+      }, '⇄');
       other.addEventListener('click', (e) => {
         e.stopPropagation();
         handlers.onSwitch();
       });
-      children.push(other);
+      buttons.push(other);
     }
-    children.push(el('span', { class: 'voice' }, `Voice: ${audio.voice}`));
-    return el('div', { class: 'audio-row' }, ...children);
+    return el('span', { class: 'audio' }, ...buttons);
   }
 
+  // Compact answer: one line for the meanings, one line for all readings (with the audio buttons).
   function buildAnswer(item, voiceIndex, handlers) {
-    const nodes = [block('Meaning', el('div', { class: 'meanings' }, ...joinSpans(item.meanings, ', ')))];
+    const meaningText = item.meanings.map((m) => m.text).join(', ');
+    const nodes = [el('div', { class: 'meanings', title: meaningText }, ...joinSpans(item.meanings, ', '))];
 
     if (item.readings.length) {
-      const rows = item.readings.map((group) => el('div', { class: 'reading-row' },
-        group.label ? el('span', { class: 'label' }, group.label) : null,
-        el('span', { class: 'jp', lang: 'ja' }, ...joinSpans(group.items, '、'))));
-      nodes.push(block('Reading', el('div', { class: 'readings' }, ...rows)));
-    }
-
-    if (item.audios.length) {
-      nodes.push(buildAudioRow(item, voiceIndex, handlers));
+      const groups = [];
+      item.readings.forEach((group, i) => {
+        if (i > 0) groups.push(el('span', { class: 'sep' }, '·'));
+        groups.push(
+          group.label ? el('span', { class: 'label' }, group.label) : null,
+          el('span', { class: 'jp', lang: 'ja' }, ...joinSpans(group.items, '、')),
+        );
+      });
+      nodes.push(el('div', { class: 'reading-line' },
+        el('div', { class: 'readings' }, ...groups),
+        item.audios.length ? buildAudioButtons(item, voiceIndex, handlers) : null));
     }
     return nodes;
   }
 
-  function buildPlaceholder() {
-    return el('div', { class: 'placeholder' }, 'Tap to reveal meaning and reading');
-  }
-
   function buildCard(item) {
-    const answer = el('div', { class: 'answer' });
+    // The answer is always laid out, so the card keeps the same height whether it is revealed or not.
+    // While hidden, CSS makes the content invisible (and its buttons unfocusable) and shows the placeholder over it.
+    const content = el('div', { class: 'answer-content' });
+    const answer = el('div', { class: 'answer' },
+      content,
+      el('div', { class: 'placeholder', 'aria-hidden': 'true' }, 'Tap to reveal'));
     const srs = item.srsStage >= 1 ? SRS_LABEL[item.srsStage] : null;
     const wrong = item.history.wrong;
     const card = el('div', {
@@ -488,17 +497,17 @@
       el('div', { class: 'card-body' },
         el('div', { class: 'card-head' },
           el('div', { class: 'tags' },
-            el('span', { class: 'tag tag-type' }, TYPE_LABEL[item.type]),
+            el('span', { class: 'tag tag-type' }, TYPE_TAG[item.type]),
             el('span', { class: 'tag' }, `Lvl ${item.level}`),
             srs ? el('span', { class: 'tag' }, srs) : null,
             item.leech ? el('span', { class: 'tag leech' }, 'Leech') : null,
-            wrong > 0 ? el('span', { class: 'tag' }, `${wrong} miss${wrong > 1 ? 'es' : ''}`) : null),
+            wrong > 0 ? el('span', { class: 'tag', title: `${wrong} miss${wrong > 1 ? 'es' : ''} in total` }, `✗ ${wrong}`) : null),
           el('span', { class: 'chevron', 'aria-hidden': 'true' }, '›')),
         answer));
 
     const renderAnswer = () => {
       const voiceIndex = state.voice.get(item.id) ?? 0;
-      answer.replaceChildren(...buildAnswer(item, voiceIndex, {
+      content.replaceChildren(...buildAnswer(item, voiceIndex, {
         onPlay: () => playAudio(item.audios[state.voice.get(item.id) ?? 0].url),
         onSwitch: () => {
           const next = ((state.voice.get(item.id) ?? 0) + 1) % item.audios.length;
@@ -515,13 +524,8 @@
       else state.revealed.delete(item.id);
       card.classList.toggle('revealed', on);
       card.setAttribute('aria-expanded', String(on));
-      if (on) {
-        renderAnswer();
-        if (play && els.autoplay.checked && item.audios.length) {
-          playAudio(item.audios[state.voice.get(item.id) ?? 0].url);
-        }
-      } else {
-        answer.replaceChildren(buildPlaceholder());
+      if (on && play && els.autoplay.checked && item.audios.length) {
+        playAudio(item.audios[state.voice.get(item.id) ?? 0].url);
       }
     };
 
@@ -539,6 +543,7 @@
       }
     });
 
+    renderAnswer();
     setRevealed(state.revealed.has(item.id));
     return el('li', {}, card);
   }

@@ -385,7 +385,7 @@ button:disabled { opacity: 0.5; cursor: progress; }
   align-items: center;
   justify-content: center;
   padding: 0.5rem;
-  min-height: 7.5rem;
+  min-height: 5.5rem;
   background: color-mix(in srgb, var(--type-color) 16%, var(--panel));
   border-right: 3px solid var(--type-color);
 }
@@ -411,8 +411,9 @@ button:disabled { opacity: 0.5; cursor: progress; }
 .card-body {
   display: flex;
   flex-direction: column;
-  gap: 0.55rem;
-  padding: 0.75rem 1rem 0.85rem;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.6rem 0.9rem;
   min-width: 0;
 }
 
@@ -423,10 +424,13 @@ button:disabled { opacity: 0.5; cursor: progress; }
   gap: 0.5rem;
 }
 
+/* Tags stay on one line to keep cards short; the least important ones are clipped on narrow screens. */
 .tags {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 0.3rem;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .tag {
@@ -461,45 +465,50 @@ button:disabled { opacity: 0.5; cursor: progress; }
 .card.revealed .chevron { transform: rotate(90deg); }
 
 .answer {
+  position: relative;
   min-width: 0;
 }
 
-.placeholder {
-  border: 1px dashed var(--border);
-  border-radius: 8px;
-  padding: 0.5rem 0.7rem;
-  color: var(--muted);
-  font-size: 0.9rem;
+/* Always laid out, so a card has the same height whether it is revealed or not.
+   While hidden it is invisible (its buttons cannot be focused) and the placeholder covers it. */
+.answer-content {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
 }
 
-.answer:not(:empty):not(:has(.placeholder)) {
-  animation: reveal 0.18s ease-out;
+.card:not(.revealed) .answer-content { visibility: hidden; }
+.card.revealed .answer-content { animation: reveal 0.18s ease-out; }
+
+.placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 0.7rem;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 0.88rem;
+  white-space: nowrap;
+  overflow: hidden;
 }
+
+.card.revealed .placeholder { display: none; }
 
 @keyframes reveal {
   from { opacity: 0; transform: translateY(-3px); }
   to { opacity: 1; transform: none; }
 }
 
-.block + .block,
-.block + .audio-row,
-.readings + .audio-row {
-  margin-top: 0.6rem;
-}
-
-.block-label {
-  font-size: 0.68rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--muted);
-  margin-bottom: 0.1rem;
-}
-
+/* One line each: long lists end with an ellipsis (the full meanings are in the tooltip). */
 .meanings {
-  font-size: 1.15rem;
+  font-size: 1.1rem;
   font-weight: 600;
-  line-height: 1.3;
-  overflow-wrap: anywhere;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .meanings .secondary,
@@ -508,68 +517,75 @@ button:disabled { opacity: 0.5; cursor: progress; }
   color: var(--muted);
 }
 
-.readings {
-  display: grid;
-  gap: 0.2rem;
-}
-
-.reading-row {
+.reading-line {
   display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
+  align-items: center;
   gap: 0.5rem;
+  min-width: 0;
 }
 
-.reading-row .label {
-  min-width: 5.5rem;
-  font-size: 0.72rem;
+.readings {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.6;
+}
+
+.readings .label {
+  font-size: 0.68rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--muted);
+  margin-right: 0.3rem;
+}
+
+.readings .sep {
+  color: var(--muted);
+  margin: 0 0.45rem;
 }
 
 .readings .jp {
   font-family: var(--glyph-font);
-  font-size: 1.1rem;
+  font-size: 1.05rem;
 }
 
-.audio-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.4rem;
+.audio {
+  display: inline-flex;
+  gap: 0.3rem;
+  flex: none;
 }
 
 .audio-btn {
-  font-size: 0.88rem;
-  padding: 0.3rem 0.8rem;
-  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 0.8rem;
+  line-height: 1;
 }
 
 .audio-btn.play-btn {
   background: var(--type-color);
   border-color: var(--type-color);
   color: #fff;
-  font-weight: 600;
 }
 
 .audio-btn.play-btn:hover { filter: brightness(1.08); }
-
-.voice {
-  font-size: 0.8rem;
-  color: var(--muted);
-}
 
 @media (max-width: 480px) {
   .topbar { padding: 0.6rem 16px; }
   .topbar h1 { font-size: 1rem; }
   .topbar-actions button { padding: 0.35rem 0.6rem; font-size: 0.82rem; }
   .card { grid-template-columns: 7.5rem 1fr; }
-  .glyph-tile { min-height: 6rem; padding: 0.4rem; }
+  .glyph-tile { min-height: 4.75rem; padding: 0.4rem; }
   .glyph { font-size: 1.6rem; }
   .glyph img { width: 2.3rem; height: 2.3rem; }
-  .card-body { padding: 0.6rem 0.75rem; }
-  .meanings { font-size: 1.05rem; }
+  .card-body { padding: 0.5rem 0.7rem; }
+  .meanings { font-size: 1rem; }
   .row { grid-template-columns: 1fr; }
-  .reading-row .label { min-width: 0; width: 100%; }
 }
