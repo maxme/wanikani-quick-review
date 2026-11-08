@@ -1,43 +1,53 @@
-# Révision rapide WaniKani
+# WaniKani Quick Review
 
-Petite web app statique pour réviser rapidement vos radicaux, kanji et vocabulaire WaniKani.
-Chaque élément s'affiche avec le caractère japonais à gauche ; le **sens** et la **lecture** sont masqués et
-s'affichent en un clic sur la carte (un second clic les masque à nouveau).
+A small static web app to quickly review your WaniKani radicals, kanji and vocabulary.
+Each item shows its Japanese text on the left. The **meaning** and **reading** stay hidden until you click the card (click again to hide them).
 
-## Fonctionnement
+## How it works
 
-- **Authentification** : vous saisissez votre jeton d'API WaniKani (*Settings → API Tokens*). Un jeton en lecture seule suffit.
-- **Stockage** : le jeton est conservé dans le `localStorage` de votre navigateur. Il n'est jamais écrit dans le code
-  ni envoyé ailleurs qu'à `api.wanikani.com`. Le bouton *Changer de jeton* l'efface.
-- **Filtres** : types (radicaux, kanji, vocabulaire), plage de niveaux, statut
-  (tous, déjà commencés, à réviser maintenant). Les filtres sont mémorisés dans le navigateur.
-- **Actions** : *Mélanger* pour l'ordre aléatoire, *Tout afficher* / *Tout masquer*.
+- **Sign in**: paste your WaniKani API token (*Settings → API Tokens*). A read-only token is enough.
+- **Storage**: the token is kept in your browser's `localStorage`. It is never written into the code and only sent to `api.wanikani.com`. *Change token* clears it.
+- **Filters**
+  - Types: radicals, kanji, vocabulary. Radicals show meaning only (no reading).
+  - Level range.
+  - Progress: all, not started, started, reviews available now, burned.
+  - Mistakes: any, missed in the last 24 h / 48 h / 7 days, leeches, never missed.
+- **Pages**: 100 items per page, with previous/next navigation.
+- **Actions**: *Shuffle*, *Show all*, *Hide all* (applies to the whole filtered list).
+- **Theme**: auto (follows the system), light or dark.
 
-Aucune dépendance ni étape de build : ce sont trois fichiers (`index.html`, `styles.css`, `app.js`).
+### Mistake definitions
 
-## Lancer en local
+Mistakes come from your WaniKani review history (`/v2/reviews`).
 
-Ouvrez `index.html` dans le navigateur, ou depuis le dossier du projet :
+- *Missed in the last N hours/days*: at least one wrong answer (meaning or reading) during that window.
+- *Leech*: at least 3 wrong answers in total, and wrong answers make up at least 25% of all answers.
+  Answers are counted as reviews × 2 for kanji and vocabulary (meaning + reading), and × 1 for radicals.
+  The thresholds are constants at the top of `app.js` (`LEECH_MIN_MISTAKES`, `LEECH_MIN_RATE`).
+
+## Run locally
+
+Open `index.html` in your browser, or from the project folder:
 
 ```bash
 python3 -m http.server 8000
 ```
 
-puis rendez-vous sur <http://localhost:8000>.
+then go to <http://localhost:8000>.
 
-## Publication sur GitHub Pages
+## GitHub Pages
 
-Le workflow `.github/workflows/pages.yml` publie le site à chaque push sur la branche `claude/sharp-ritchie-oti2be` (ou `main`).
+The workflow `.github/workflows/pages.yml` publishes the site on every push to `claude/sharp-ritchie-oti2be` (and `main`).
 
-Réglage à faire une seule fois dans GitHub :
+One-time setup in GitHub:
 
 1. *Settings → Pages*
-2. Dans *Build and deployment → Source*, choisissez **GitHub Actions**.
+2. Under *Build and deployment → Source*, choose **GitHub Actions**.
 
-L'app sera ensuite disponible à l'adresse `https://maxme.github.io/wanikani-quick-review/`.
+The app is then available at `https://maxme.github.io/wanikani-quick-review/`.
 
-## Limites connues
+## Known limits
 
-- Les radicaux sans caractère (image seule) sont affichés via leur image WaniKani.
-- Le filtre « À réviser maintenant » se base sur `available_at` renvoyé par l'API ; il reflète l'état au moment du chargement.
-- Limite de l'API WaniKani : 60 requêtes par minute. Une liste très large peut en demander plusieurs pages ; en cas de dépassement, un message l'indique.
+- Radicals without a text character are shown with their WaniKani image.
+- The "available now" filter uses `available_at` from the API, so it reflects the state at load time.
+- WaniKani API limit: 60 requests per minute. The app waits and retries when the limit is hit.

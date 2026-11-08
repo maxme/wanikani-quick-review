@@ -1,91 +1,109 @@
 <!doctype html>
-<html lang="fr">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Liste de révision rapide des radicaux, kanji et vocabulaire WaniKani, avec sens et lectures masqués.">
-  <title>Révision rapide WaniKani</title>
+  <meta name="description" content="Quick review list for WaniKani radicals, kanji and vocabulary, with meanings and readings hidden until you click.">
+  <title>WaniKani Quick Review</title>
   <link rel="stylesheet" href="styles.css">
   <script>
-    // Applique le thème mémorisé avant le rendu pour éviter un flash clair/sombre
+    // Apply the saved theme before first render to avoid a light/dark flash
     try {
       var savedTheme = localStorage.getItem('wk-quick-review.theme');
       if (savedTheme === 'light' || savedTheme === 'dark') {
         document.documentElement.dataset.theme = savedTheme;
       }
-    } catch (e) { /* stockage indisponible : thème automatique */ }
+    } catch (e) { /* storage unavailable: automatic theme */ }
   </script>
 </head>
 <body>
   <header class="topbar">
-    <h1>Révision rapide WaniKani</h1>
+    <h1>WaniKani Quick Review</h1>
     <div class="topbar-actions">
-      <button id="theme" class="ghost" type="button" aria-label="Changer le thème">Thème : auto</button>
-      <button id="logout" class="ghost" type="button" hidden>Changer de jeton</button>
+      <button id="theme" class="ghost" type="button" aria-label="Change theme">Theme: auto</button>
+      <button id="logout" class="ghost" type="button" hidden>Change token</button>
     </div>
   </header>
 
   <main class="wrap">
-    <!-- Connexion : saisie du jeton d'API -->
+    <!-- Login: enter the API token -->
     <section id="login" class="panel" hidden>
-      <h2>Connexion</h2>
+      <h2>Sign in</h2>
       <p>
-        Entrez votre jeton d'API WaniKani. Un jeton en lecture seule suffit.
-        Il reste dans ce navigateur (localStorage) et n'est envoyé qu'à <code>api.wanikani.com</code>.
+        Enter your WaniKani API token. A read-only token is enough.
+        It stays in this browser (localStorage) and is only sent to <code>api.wanikani.com</code>.
       </p>
       <form id="login-form" class="stack">
-        <label for="token">Jeton d'API</label>
+        <label for="token">API token</label>
         <input id="token" type="password" autocomplete="off" spellcheck="false" required>
-        <button type="submit" class="primary">Enregistrer et continuer</button>
+        <button type="submit" class="primary">Save and continue</button>
       </form>
       <p class="hint">
-        Créez un jeton sur
+        Create a token at
         <a href="https://www.wanikani.com/settings/personal_access_tokens" target="_blank" rel="noopener">wanikani.com → Settings → API Tokens</a>.
       </p>
     </section>
 
-    <!-- Filtres -->
+    <!-- Filters -->
     <section id="filters" class="panel" hidden>
       <form id="filters-form" class="filters">
         <fieldset class="types">
           <legend>Types</legend>
-          <label class="chip type-radical"><input type="checkbox" name="types" value="radical" checked> Radicaux</label>
+          <label class="chip type-radical"><input type="checkbox" name="types" value="radical" checked> Radicals</label>
           <label class="chip type-kanji"><input type="checkbox" name="types" value="kanji" checked> Kanji</label>
-          <label class="chip type-vocabulary"><input type="checkbox" name="types" value="vocabulary" checked> Vocabulaire</label>
+          <label class="chip type-vocabulary"><input type="checkbox" name="types" value="vocabulary" checked> Vocabulary</label>
         </fieldset>
 
         <div class="row">
-          <label>Niveau min
+          <label>Min level
             <select id="level-min"></select>
           </label>
-          <label>Niveau max
+          <label>Max level
             <select id="level-max"></select>
           </label>
         </div>
 
-        <label>Statut
-          <select id="status">
-            <option value="all">Tous les éléments</option>
-            <option value="started">Déjà commencés</option>
-            <option value="review">À réviser maintenant</option>
+        <label>Progress
+          <select id="progress">
+            <option value="all">All items</option>
+            <option value="not-started">Not started yet</option>
+            <option value="started">Started (in SRS)</option>
+            <option value="review">Reviews available now</option>
+            <option value="burned">Burned</option>
           </select>
         </label>
 
-        <button type="submit" class="primary">Charger la liste</button>
+        <label>Mistakes
+          <select id="mistakes">
+            <option value="any">Any</option>
+            <option value="24h">Missed in the last 24 hours</option>
+            <option value="48h">Missed in the last 48 hours</option>
+            <option value="7d">Missed in the last 7 days</option>
+            <option value="leech">Leeches</option>
+            <option value="never">Never missed</option>
+          </select>
+        </label>
+
+        <button type="submit" class="primary">Load list</button>
       </form>
     </section>
 
-    <!-- Résultats -->
+    <!-- Results -->
     <section id="results" hidden>
       <div class="toolbar">
         <span id="count" aria-live="polite"></span>
         <div class="actions">
-          <button id="shuffle" type="button">Mélanger</button>
-          <button id="show-all" type="button">Tout afficher</button>
-          <button id="hide-all" type="button">Tout masquer</button>
+          <button id="shuffle" type="button">Shuffle</button>
+          <button id="show-all" type="button">Show all</button>
+          <button id="hide-all" type="button">Hide all</button>
         </div>
       </div>
       <ol id="list" class="list"></ol>
+      <nav id="pager" class="pager" aria-label="Pages" hidden>
+        <button id="prev-page" type="button">← Previous</button>
+        <span id="page-label"></span>
+        <button id="next-page" type="button">Next →</button>
+      </nav>
     </section>
 
     <p id="message" class="status" role="status" aria-live="polite"></p>
