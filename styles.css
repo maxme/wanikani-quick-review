@@ -263,7 +263,7 @@ button:disabled { opacity: 0.5; cursor: progress; }
 .card {
   --type-color: var(--radical);
   display: grid;
-  grid-template-columns: 6.5rem 1fr;
+  grid-template-columns: 9rem 1fr;
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 14px;
@@ -472,7 +472,7 @@ button:disabled { opacity: 0.5; cursor: progress; }
 }
 
 @media (max-width: 480px) {
-  .card { grid-template-columns: 4.6rem 1fr; }
+  .card { grid-template-columns: 6.5rem 1fr; }
   .glyph-tile { min-height: 6rem; padding: 0.4rem; }
   .glyph { font-size: 2rem; }
   .glyph.long { font-size: 1.2rem; }
