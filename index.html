@@ -46,6 +46,11 @@
 
     <!-- Filters -->
     <section id="filters" class="panel" hidden>
+      <details id="filters-panel" open>
+        <summary>
+          <span class="summary-title">Filters</span>
+          <span id="filters-summary" class="summary-text"></span>
+        </summary>
       <form id="filters-form" class="filters">
         <fieldset class="types">
           <legend>Types</legend>
@@ -92,18 +97,23 @@
 
         <button type="submit" class="primary">Load list</button>
       </form>
+      </details>
     </section>
 
     <!-- Results -->
     <section id="results" hidden>
       <div class="toolbar">
-        <span id="count" aria-live="polite"></span>
+        <div class="toolbar-info">
+          <span id="count" aria-live="polite"></span>
+          <span id="revealed-count" class="revealed-count"></span>
+        </div>
         <div class="actions">
           <button id="shuffle" type="button">Shuffle</button>
           <button id="show-all" type="button">Show all</button>
           <button id="hide-all" type="button">Hide all</button>
         </div>
       </div>
+      <div id="quick-filters" class="quick-filters" role="group" aria-label="Quick mistake filters"></div>
       <ol id="list" class="list"></ol>
       <nav id="pager" class="pager" aria-label="Pages" hidden>
         <button id="prev-page" type="button">← Previous</button>

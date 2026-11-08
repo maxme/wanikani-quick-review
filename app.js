@@ -59,6 +59,10 @@
     hideAll: $('#hide-all'),
     message: $('#message'),
     theme: $('#theme'),
+    filtersPanel: $('#filters-panel'),
+    filtersSummary: $('#filters-summary'),
+    quickFilters: $('#quick-filters'),
+    revealedCount: $('#revealed-count'),
   };
 
   // raw: subjects and assignments as returned by the API (null until loaded)
@@ -409,7 +413,7 @@
       return el('img', { src: item.image, alt: TYPE_LABEL[item.type], loading: 'lazy' });
     }
     const text = item.glyph ?? '';
-    return el('span', { class: text.length > 2 ? 'glyph long' : 'glyph', lang: 'ja' }, text);
+    return el('span', { class: 'glyph', lang: 'ja' }, text);
   }
 
   function joinSpans(entries, separator) {
@@ -521,13 +525,17 @@
       }
     };
 
-    card.addEventListener('click', () => setRevealed(!state.revealed.has(item.id), { play: true }));
+    card.addEventListener('click', () => {
+      setRevealed(!state.revealed.has(item.id), { play: true });
+      updateRevealedCount();
+    });
     card.addEventListener('keydown', (e) => {
       // Ignore keys pressed on the audio buttons inside the card.
       if (e.target !== card) return;
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
         setRevealed(!state.revealed.has(item.id), { play: true });
+        updateRevealedCount();
       }
     });
 
@@ -544,6 +552,7 @@
     const slice = state.view.slice(start, start + PAGE_SIZE);
 
     els.list.replaceChildren(...slice.map(buildCard));
+    updateRevealedCount();
     els.count.textContent = total
       ? `Showing ${start + 1}–${start + slice.length} of ${total} items`
       : 'No items match these filters';
@@ -554,13 +563,53 @@
     els.results.hidden = false;
   }
 
+  const QUICK_LABEL = {
+    any: 'All', 'missed-24h': 'Missed 24 h', 'missed-48h': 'Missed 48 h', 'missed-7d': 'Missed 7 days',
+    leech: 'Leeches', never: 'Never missed',
+  };
+
+  // One-line summary of the filters, shown when the filter panel is collapsed.
+  function updateFiltersSummary() {
+    const types = selectedTypes().map((t) => TYPE_LABEL[t]).join(', ') || 'No type';
+    const levels = els.levelMin.value === els.levelMax.value
+      ? `Level ${els.levelMin.value}`
+      : `Levels ${els.levelMin.value}–${els.levelMax.value}`;
+    const progress = els.progress.selectedOptions[0]?.textContent ?? '';
+    els.filtersSummary.textContent = `${types} · ${levels} · ${progress}`;
+  }
+
+  function updateRevealedCount() {
+    const revealed = state.view.reduce((n, item) => n + (state.revealed.has(item.id) ? 1 : 0), 0);
+    els.revealedCount.textContent = state.view.length ? `${revealed} / ${state.view.length} revealed` : '';
+  }
+
+  // Quick buttons for the mistake filter, each with the number of items it would show.
+  function renderQuickFilters(itemsForProgress, now) {
+    const current = els.mistakes.value;
+    els.quickFilters.replaceChildren(...MISTAKE_VALUES.map((value) => {
+      const count = itemsForProgress.reduce((n, item) => n + (matchesMistakes(item, value, now) ? 1 : 0), 0);
+      const button = el('button', {
+        type: 'button',
+        class: value === current ? 'quick active' : 'quick',
+        'aria-pressed': String(value === current),
+      }, QUICK_LABEL[value], ' ', el('span', { class: 'quick-count' }, count));
+      button.addEventListener('click', () => {
+        els.mistakes.value = value;
+        els.mistakes.dispatchEvent(new Event('change'));
+      });
+      return button;
+    }));
+  }
+
   function applyFilters() {
     const now = Date.now();
     const progress = els.progress.value;
     const mistakes = els.mistakes.value;
-    state.view = state.items.filter((item) =>
-      matchesProgress(item, progress, now) && matchesMistakes(item, mistakes, now));
+    const forProgress = state.items.filter((item) => matchesProgress(item, progress, now));
+    state.view = forProgress.filter((item) => matchesMistakes(item, mistakes, now));
     state.page = 0;
+    renderQuickFilters(forProgress, now);
+    updateFiltersSummary();
     renderList();
   }
 
@@ -616,6 +665,8 @@
       state.stats = buildStatsMap(cache);
       state.items = buildItems();
       applyFilters();
+      // Collapse the filters once the list is there, so the cards start near the top of the screen.
+      els.filtersPanel.open = false;
       setMessage(state.items.length ? '' : 'No items for these filters.');
     } catch (err) {
       setMessage(err.message || 'Unknown error.', true);
@@ -687,7 +738,12 @@
     select.addEventListener('change', () => {
       savePrefs();
       if (state.raw) applyFilters();
+      else updateFiltersSummary();
     });
+  }
+
+  for (const input of [els.levelMin, els.levelMax, ...els.filtersForm.querySelectorAll('input[name="types"]')]) {
+    input.addEventListener('change', updateFiltersSummary);
   }
 
   els.autoplay.addEventListener('change', savePrefs);
@@ -718,6 +774,7 @@
     applyTheme(currentTheme());
     populateLevels();
     restorePrefs();
+    updateFiltersSummary();
     if (getToken()) {
       showApp();
       load();
