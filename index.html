@@ -6,11 +6,23 @@
   <meta name="description" content="Liste de révision rapide des radicaux, kanji et vocabulaire WaniKani, avec sens et lectures masqués.">
   <title>Révision rapide WaniKani</title>
   <link rel="stylesheet" href="styles.css">
+  <script>
+    // Applique le thème mémorisé avant le rendu pour éviter un flash clair/sombre
+    try {
+      var savedTheme = localStorage.getItem('wk-quick-review.theme');
+      if (savedTheme === 'light' || savedTheme === 'dark') {
+        document.documentElement.dataset.theme = savedTheme;
+      }
+    } catch (e) { /* stockage indisponible : thème automatique */ }
+  </script>
 </head>
 <body>
   <header class="topbar">
     <h1>Révision rapide WaniKani</h1>
-    <button id="logout" class="ghost" type="button" hidden>Changer de jeton</button>
+    <div class="topbar-actions">
+      <button id="theme" class="ghost" type="button" aria-label="Changer le thème">Thème : auto</button>
+      <button id="logout" class="ghost" type="button" hidden>Changer de jeton</button>
+    </div>
   </header>
 
   <main class="wrap">

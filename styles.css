@@ -70,6 +70,14 @@ a { color: var(--accent); }
   font-size: 1.15rem;
 }
 
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .wrap {
   max-width: 760px;
   margin: 0 auto;

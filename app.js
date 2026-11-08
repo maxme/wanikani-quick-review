@@ -31,7 +31,29 @@
     showAll: $('#show-all'),
     hideAll: $('#hide-all'),
     message: $('#message'),
+    theme: $('#theme'),
   };
+
+  // ---------- Thème : automatique (système), clair ou sombre ----------
+  const THEME_LABEL = { auto: 'auto', light: 'clair', dark: 'sombre' };
+  const THEME_NEXT = { auto: 'light', light: 'dark', dark: 'auto' };
+  const STORAGE_THEME = 'wk-quick-review.theme';
+
+  function currentTheme() {
+    const saved = storageGet(STORAGE_THEME);
+    return saved === 'light' || saved === 'dark' ? saved : 'auto';
+  }
+
+  function applyTheme(theme) {
+    if (theme === 'auto') {
+      delete document.documentElement.dataset.theme;
+      storageRemove(STORAGE_THEME);
+    } else {
+      document.documentElement.dataset.theme = theme;
+      storageSet(STORAGE_THEME, theme);
+    }
+    els.theme.textContent = `Thème : ${THEME_LABEL[theme]}`;
+  }
 
   // État courant : éléments chargés, éléments affichés, ids dont le sens est révélé
   const state = { items: [], view: [], revealed: new Set(), cards: new Map() };
@@ -427,12 +449,17 @@
     if (state.items.length) applyStatus();
   });
 
+  els.theme.addEventListener('click', () => {
+    applyTheme(THEME_NEXT[currentTheme()]);
+  });
+
   els.shuffle.addEventListener('click', shuffleView);
   els.showAll.addEventListener('click', () => setAllRevealed(true));
   els.hideAll.addEventListener('click', () => setAllRevealed(false));
 
   // ---------- Démarrage ----------
   function init() {
+    applyTheme(currentTheme());
     populateLevels();
     restorePrefs();
     if (getToken()) {
