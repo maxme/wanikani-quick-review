@@ -40,3 +40,22 @@ jobs:
             git commit -m "Update WaniKani miss journal"
             git push
           fi
+
+  # Publishes the updated journal: commits made with GITHUB_TOKEN do not trigger the Pages workflow.
+  deploy:
+    needs: track
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+      - id: deployment
+        uses: actions/deploy-pages@v4
