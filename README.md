@@ -20,20 +20,18 @@ Each item shows its Japanese text on the left. The **meaning** and **reading** s
 ### Mistake definitions
 
 WaniKani no longer exposes the time of each answer: `GET /reviews` is deprecated and returns nothing.
+Recent misses are deduced from `review_statistics`, synced incrementally with `updated_after`:
 
-- *Missed in the last 24 h / 48 h / 7 days*: read from `data/misses.json`, a journal that GitHub Actions updates every hour
-  (`.github/workflows/track-misses.yml`, script `scripts/track_misses.py`). The script compares each item's wrong-answer
-  total with the previous run. The journal only starts from the first run, so earlier misses are unknown. Precision is about one hour.
+- A review records one final correct answer per part, so a part answered wrong during the review ends with
+  `current_streak = 1` (see *Create a Review* in the API docs). `current_streak = 1` on a part that has wrong
+  answers means the item's **last review had a miss**.
+- `data_updated_at` of the statistic is the time of that last review.
+- *Missed in the last 24 h / 48 h / 7 days*: the last review had a miss and happened in that period.
+  A miss followed by a correct review in the same period is not shown.
 - *Leech*: at least 10 wrong answers in total, and under 75% correct overall (thresholds at the top of `app.js`).
 - *Never missed*: at least one answer, and no wrong answer.
 
-#### Setting up the miss journal
-
-1. Create a read-only WaniKani token and add it as a repository secret named `WANIKANI_TOKEN`
-   (*Settings → Secrets and variables → Actions*). Never commit the token.
-2. The workflow runs on the default branch (`main`). Trigger it once from the *Actions* tab to record the baseline.
-
-The journal is in the public repository, so it is visible to anyone who can see the repository.
+The statistics cache is stored in the browser and cleared on *Change token*.
 
 
 ## Run locally

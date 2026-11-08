@@ -16,10 +16,9 @@
   const STORAGE_TOKEN = 'wk-quick-review.token';
   const STORAGE_PREFS = 'wk-quick-review.prefs';
   const STORAGE_THEME = 'wk-quick-review.theme';
-  const STORAGE_STATS = 'wk-quick-review.stats';
-  // Miss journal written hourly by GitHub Actions (scripts/track_misses.py).
-  // Served by GitHub Pages next to the app. The track-misses workflow redeploys the site after each update.
-  const JOURNAL_URL = 'data/misses.json';
+  // v2: the cache entries now hold the last-review miss flag; older caches are dropped and fully re-synced.
+  const STORAGE_STATS = 'wk-quick-review.stats.v2';
+  const OLD_STORAGE_STATS = 'wk-quick-review.stats';
 
   const TYPE_LABEL = { radical: 'Radical', kanji: 'Kanji', vocabulary: 'Vocabulary' };
   const TYPE_ORDER = { radical: 0, kanji: 1, vocabulary: 2 };
@@ -65,7 +64,7 @@
   // raw: subjects and assignments as returned by the API (null until loaded)
   // stats: Map subject id -> review history built from the local statistics cache
   // voice: chosen pronunciation voice per vocabulary id
-  const state = { raw: null, stats: new Map(), journal: new Map(), items: [], view: [], page: 0, revealed: new Set(), voice: new Map() };
+  const state = { raw: null, stats: new Map(), items: [], view: [], page: 0, revealed: new Set(), voice: new Map() };
 
   // ---------- Local storage (token, preferences, theme, statistics cache) ----------
   function storageGet(key) {
@@ -274,20 +273,24 @@
   }
 
   // ---------- Review history ----------
-  // GET /reviews is deprecated and returns nothing, and the API keeps no timestamp per answer.
-  // review_statistics holds the wrong-answer totals per subject. The app keeps a local copy and syncs it
-  // incrementally with updated_after on every load. A miss is detected when a subject's wrong total grows
-  // between two loads, and it is recorded with the time of that load. So "missed since previous visit"
-  // is exact for the period between two visits, but it cannot see misses made before the first visit.
-  // Cache entry per subject: [wrong, answered, percentCorrect, updatedAt(ms), lastMissAt(ms)]
-  const NO_HISTORY = { wrong: 0, answered: 0, percentCorrect: null, updatedAt: 0, lastMissAt: 0 };
+  // GET /reviews is deprecated and returns nothing, so review_statistics is the source of history.
+  // Recent misses are deduced from it:
+  // - A review records one final correct answer per part, so a part answered wrong during the review
+  //   ends with current_streak = 1 (see "Create a Review" in the API docs). current_streak = 1 on a part
+  //   that has wrong answers therefore means the last review of the subject had a miss on that part.
+  // - data_updated_at is the time of that last review (it matches assignment.available_at minus the
+  //   SRS interval). So "missed in the last N hours" = last review had a miss and happened within N hours.
+  // Limit: a miss followed by a correct review inside the window is no longer visible.
+  // The local copy is synced incrementally with updated_after.
+  // Cache entry per subject: [wrong, answered, percentCorrect, lastReviewAt(ms), lastReviewMissed(0|1)]
+  const NO_HISTORY = { wrong: 0, answered: 0, percentCorrect: null, lastReviewAt: 0, lastReviewMissed: false };
 
   function loadStatsCache() {
     try {
       const cache = JSON.parse(storageGet(STORAGE_STATS) || 'null');
       if (cache && typeof cache.syncedAt === 'string' && cache.s) return cache;
     } catch { /* corrupt cache: start again */ }
-    return { syncedAt: null, visitedAt: null, s: {} };
+    return { syncedAt: null, s: {} };
   }
 
   function saveStatsCache(cache) {
@@ -296,45 +299,36 @@
 
   function compactStat(raw) {
     const d = raw.data;
+    const lastReviewMissed = (d.meaning_current_streak === 1 && d.meaning_incorrect > 0)
+      || (d.reading_current_streak === 1 && d.reading_incorrect > 0);
     return [
       d.meaning_incorrect + d.reading_incorrect,
       d.meaning_correct + d.meaning_incorrect + d.reading_correct + d.reading_incorrect,
       d.percentage_correct ?? null,
       Date.parse(raw.data_updated_at) || 0,
+      lastReviewMissed ? 1 : 0,
     ];
   }
 
   // Syncs review_statistics (only changed records after the first sync) and returns the updated cache.
   async function syncStats(token) {
     const cache = loadStatsCache();
-    const now = Date.now();
-    // Overlap of a few minutes, so no review made during the sync is lost. Re-read records do not double count.
-    const nextSync = new Date(now - 5 * 60 * 1000).toISOString();
+    // Overlap of a few minutes, so no review made during the sync is lost.
+    const nextSync = new Date(Date.now() - 5 * 60 * 1000).toISOString();
     const query = cache.syncedAt ? `?${new URLSearchParams({ updated_after: cache.syncedAt })}` : '';
     const changed = await fetchAll(`${API_BASE}/review_statistics${query}`, token);
-
     for (const raw of changed) {
-      const id = raw.data.subject_id;
-      const next = compactStat(raw);
-      const prev = cache.s[id];
-      // Baseline: the wrong total seen last time. Unknown on the very first sync (no misses can be detected then),
-      // and 0 for a subject that first appeared since the previous sync.
-      const baseline = prev ? prev[0] : (cache.syncedAt ? 0 : null);
-      let lastMissAt = prev ? prev[4] ?? 0 : 0;
-      if (baseline !== null && next[0] > baseline) lastMissAt = now;
-      cache.s[id] = [...next, lastMissAt];
+      cache.s[raw.data.subject_id] = compactStat(raw);
     }
-
     cache.syncedAt = nextSync;
-    cache.visitedAt = now;
     saveStatsCache(cache);
     return cache;
   }
 
   function buildStatsMap(cache) {
     const map = new Map();
-    for (const [id, [wrong, answered, percentCorrect, updatedAt, lastMissAt]] of Object.entries(cache.s)) {
-      map.set(Number(id), { wrong, answered, percentCorrect, updatedAt, lastMissAt: lastMissAt || 0 });
+    for (const [id, [wrong, answered, percentCorrect, lastReviewAt, lastReviewMissed]] of Object.entries(cache.s)) {
+      map.set(Number(id), { wrong, answered, percentCorrect, lastReviewAt, lastReviewMissed: lastReviewMissed === 1 });
     }
     return map;
   }
@@ -395,26 +389,10 @@
     }
   }
 
-  // Latest miss time per subject, from the journal. Returns null when the journal could not be read.
-  async function fetchJournal() {
-    try {
-      const res = await fetch(JOURNAL_URL, { cache: 'no-store' });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const entries = await res.json();
-      const latest = new Map();
-      for (const { subject_id: id, detected_at: at } of entries) {
-        const t = Date.parse(at);
-        if (t > (latest.get(id) ?? 0)) latest.set(id, t);
-      }
-      return latest;
-    } catch {
-      return null;
-    }
-  }
-
   function matchesMistakes(item, value, now) {
     const h = item.history;
-    const missedWithin = (hours) => (state.journal.get(item.id) ?? 0) >= now - hours * HOUR;
+    // The last review had a miss and happened within the window.
+    const missedWithin = (hours) => h.lastReviewMissed && h.lastReviewAt >= now - hours * HOUR;
     switch (value) {
       case 'missed-24h': return missedWithin(24);
       case 'missed-48h': return missedWithin(48);
@@ -634,17 +612,11 @@
         fetchAll(`${API_BASE}/assignments?${new URLSearchParams({ subject_types: types.join(','), levels })}`, token),
         syncStats(token),
       ]);
-      const journal = await fetchJournal();
-      state.journal = journal ?? new Map();
       state.raw = { subjects, assignments };
       state.stats = buildStatsMap(cache);
       state.items = buildItems();
       applyFilters();
-      if (journal === null) {
-        setMessage('The miss journal could not be loaded: "missed" filters are empty.', true);
-      } else {
-        setMessage(state.items.length ? '' : 'No items for these filters.');
-      }
+      setMessage(state.items.length ? '' : 'No items for these filters.');
     } catch (err) {
       setMessage(err.message || 'Unknown error.', true);
     } finally {
@@ -682,6 +654,7 @@
     // The statistics cache belongs to the account: remove it with the token.
     storageRemove(STORAGE_TOKEN);
     storageRemove(STORAGE_STATS);
+    storageRemove(OLD_STORAGE_STATS);
     state.raw = null;
     state.stats = new Map();
     state.items = [];
@@ -741,6 +714,7 @@
 
   // ---------- Startup ----------
   function init() {
+    storageRemove(OLD_STORAGE_STATS);
     applyTheme(currentTheme());
     populateLevels();
     restorePrefs();
