@@ -2,7 +2,8 @@ name: Deploy GitHub Pages
 
 on:
   push:
-    branches: [claude/sharp-ritchie-oti2be, main]
+    # Only main: the github-pages environment only allows deployments from the default branch.
+    branches: [main]
   workflow_dispatch:
 
 permissions:

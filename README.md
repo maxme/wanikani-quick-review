@@ -46,7 +46,7 @@ then go to <http://localhost:8000>.
 
 ## GitHub Pages
 
-The workflow `.github/workflows/pages.yml` publishes the site on every push to `claude/sharp-ritchie-oti2be` (and `main`).
+The workflow `.github/workflows/pages.yml` publishes the site on every push to `main` (the `github-pages` environment only accepts deployments from the default branch).
 
 One-time setup in GitHub:
 
