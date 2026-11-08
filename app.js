@@ -18,7 +18,8 @@
 
   const TYPE_LABEL = { radical: 'Radical', kanji: 'Kanji', vocabulary: 'Vocabulary' };
   const TYPE_ORDER = { radical: 0, kanji: 1, vocabulary: 2 };
-  const READING_LABEL = { onyomi: 'On’yomi', kunyomi: 'Kun’yomi', nanori: 'Nanori', reading: 'Reading' };
+  // The plain "reading" group of vocabulary gets no row label: the card already says "Reading".
+  const READING_LABEL = { onyomi: 'On’yomi', kunyomi: 'Kun’yomi', nanori: 'Nanori', reading: '' };
   const READING_ORDER = ['onyomi', 'kunyomi', 'nanori', 'reading'];
   const SRS_LABEL = { 1: 'Apprentice', 2: 'Apprentice', 3: 'Apprentice', 4: 'Apprentice', 5: 'Guru', 6: 'Guru', 7: 'Master', 8: 'Enlightened', 9: 'Burned' };
 
@@ -39,6 +40,7 @@
     levelMax: $('#level-max'),
     progress: $('#progress'),
     mistakes: $('#mistakes'),
+    autoplay: $('#autoplay'),
     results: $('#results'),
     count: $('#count'),
     list: $('#list'),
@@ -53,8 +55,9 @@
     theme: $('#theme'),
   };
 
-  // Current state: all loaded items, filtered view, current page, ids whose answer is revealed
-  const state = { items: [], view: [], page: 0, revealed: new Set() };
+  // Current state: all loaded items, filtered view, current page, ids whose answer is revealed,
+  // and the chosen pronunciation voice per vocabulary id.
+  const state = { items: [], view: [], page: 0, revealed: new Set(), voice: new Map() };
 
   // ---------- Local storage (token, preferences, theme) ----------
   function storageGet(key) {
@@ -81,6 +84,7 @@
       levelMax: Number(els.levelMax.value),
       progress: els.progress.value,
       mistakes: els.mistakes.value,
+      autoplay: els.autoplay.checked,
     }));
   }
 
@@ -127,6 +131,22 @@
 
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+  // ---------- Audio ----------
+  // One shared player: starting a new clip stops the previous one.
+  let player = null;
+
+  function playAudio(url) {
+    try {
+      if (!player) player = new Audio();
+      player.pause();
+      player.src = url;
+      const playing = player.play();
+      if (playing) playing.catch(() => setMessage('The audio could not be played.', true));
+    } catch {
+      setMessage('The audio could not be played.', true);
+    }
+  }
+
   // ---------- Filters ----------
   function selectedTypes() {
     return [...els.filtersForm.querySelectorAll('input[name="types"]:checked')].map((i) => i.value);
@@ -153,6 +173,7 @@
     const progress = prefs.progress ?? (prefs.status === 'review' || prefs.status === 'started' ? prefs.status : 'all');
     if (PROGRESS_VALUES.includes(progress)) els.progress.value = progress;
     if (MISTAKE_VALUES.includes(prefs.mistakes)) els.mistakes.value = prefs.mistakes;
+    if (typeof prefs.autoplay === 'boolean') els.autoplay.checked = prefs.autoplay;
   }
 
   // ---------- WaniKani API calls ----------
@@ -227,6 +248,21 @@
     }));
   }
 
+  // One audio clip per voice actor; MP3 is preferred when both formats are offered.
+  function normalizeAudios(list = []) {
+    const byVoice = new Map();
+    for (const a of list) {
+      if (!a.url || !String(a.content_type || '').startsWith('audio/')) continue;
+      const voice = a.metadata?.voice_actor_name || 'Voice';
+      const key = a.metadata?.voice_actor_id ?? voice;
+      const current = byVoice.get(key);
+      if (!current || (a.content_type === 'audio/mpeg' && current.type !== 'audio/mpeg')) {
+        byVoice.set(key, { url: a.url, type: a.content_type, voice });
+      }
+    }
+    return [...byVoice.values()];
+  }
+
   // Mistake history per subject, from the reviews endpoint.
   function buildMistakeStats(reviews) {
     const stats = new Map();
@@ -264,6 +300,7 @@
       image: d.characters ? null : pickImage(d.character_images),
       meanings: normalizeMeanings(d.meanings),
       readings: type === 'radical' ? [] : normalizeReadings(d.readings),
+      audios: type === 'vocabulary' ? normalizeAudios(d.pronunciation_audios) : [],
       srsStage: assignment?.srs_stage ?? 0,
       availableAt: assignment?.available_at ?? null,
       reviews: mistakes.reviews,
@@ -335,16 +372,53 @@
     return parts;
   }
 
-  function buildAnswer(item) {
-    const meanings = el('div', { class: 'meanings' }, ...joinSpans(item.meanings, ', '));
-    const readingRows = item.readings.map((group) => el('div', { class: 'reading-row' },
-      el('span', { class: 'label' }, group.label),
-      el('span', { class: 'jp', lang: 'ja' }, ...joinSpans(group.items, '、'))));
-    return [meanings, readingRows.length ? el('div', { class: 'readings' }, ...readingRows) : null];
+  function block(label, content) {
+    return el('div', { class: 'block' }, el('div', { class: 'block-label' }, label), content);
+  }
+
+  function buildAudioRow(item, voiceIndex, handlers) {
+    const audio = item.audios[voiceIndex];
+    const play = el('button', {
+      type: 'button',
+      class: 'audio-btn play-btn',
+      'aria-label': `Play pronunciation (${audio.voice})`,
+    }, '▶ Play');
+    play.addEventListener('click', (e) => {
+      e.stopPropagation();
+      handlers.onPlay();
+    });
+
+    const children = [play];
+    if (item.audios.length > 1) {
+      const other = el('button', { type: 'button', class: 'audio-btn', title: 'Hear another voice' }, '⇄ Other voice');
+      other.addEventListener('click', (e) => {
+        e.stopPropagation();
+        handlers.onSwitch();
+      });
+      children.push(other);
+    }
+    children.push(el('span', { class: 'voice' }, `Voice: ${audio.voice}`));
+    return el('div', { class: 'audio-row' }, ...children);
+  }
+
+  function buildAnswer(item, voiceIndex, handlers) {
+    const nodes = [block('Meaning', el('div', { class: 'meanings' }, ...joinSpans(item.meanings, ', ')))];
+
+    if (item.readings.length) {
+      const rows = item.readings.map((group) => el('div', { class: 'reading-row' },
+        group.label ? el('span', { class: 'label' }, group.label) : null,
+        el('span', { class: 'jp', lang: 'ja' }, ...joinSpans(group.items, '、'))));
+      nodes.push(block('Reading', el('div', { class: 'readings' }, ...rows)));
+    }
+
+    if (item.audios.length) {
+      nodes.push(buildAudioRow(item, voiceIndex, handlers));
+    }
+    return nodes;
   }
 
   function buildPlaceholder() {
-    return el('div', { class: 'placeholder' }, 'Click to show meaning and reading');
+    return el('div', { class: 'placeholder' }, 'Tap to reveal meaning and reading');
   }
 
   function buildCard(item) {
@@ -356,30 +430,54 @@
       tabindex: '0',
       'aria-expanded': 'false',
     },
-      el('div', { class: 'glyph-col' },
-        buildGlyph(item),
-        el('div', { class: 'tags' },
-          el('span', {}, TYPE_LABEL[item.type]),
-          el('span', {}, `Lvl ${item.level}`),
-          srs ? el('span', {}, srs) : null,
-          item.leech ? el('span', { class: 'leech' }, 'Leech') : null,
-          item.wrong > 0 ? el('span', {}, `${item.wrong} miss${item.wrong > 1 ? 'es' : ''}`) : null)),
-      answer);
+      el('div', { class: 'glyph-tile' }, buildGlyph(item)),
+      el('div', { class: 'card-body' },
+        el('div', { class: 'card-head' },
+          el('div', { class: 'tags' },
+            el('span', { class: 'tag tag-type' }, TYPE_LABEL[item.type]),
+            el('span', { class: 'tag' }, `Lvl ${item.level}`),
+            srs ? el('span', { class: 'tag' }, srs) : null,
+            item.leech ? el('span', { class: 'tag leech' }, 'Leech') : null,
+            item.wrong > 0 ? el('span', { class: 'tag' }, `${item.wrong} miss${item.wrong > 1 ? 'es' : ''}`) : null),
+          el('span', { class: 'chevron', 'aria-hidden': 'true' }, '›')),
+        answer));
 
-    const setRevealed = (on) => {
+    const renderAnswer = () => {
+      const voiceIndex = state.voice.get(item.id) ?? 0;
+      answer.replaceChildren(...buildAnswer(item, voiceIndex, {
+        onPlay: () => playAudio(item.audios[state.voice.get(item.id) ?? 0].url),
+        onSwitch: () => {
+          const next = ((state.voice.get(item.id) ?? 0) + 1) % item.audios.length;
+          state.voice.set(item.id, next);
+          renderAnswer();
+          playAudio(item.audios[next].url);
+        },
+      }));
+    };
+
+    // play: true only for a user click on the card, so re-rendering never starts audio on its own.
+    const setRevealed = (on, { play = false } = {}) => {
       if (on) state.revealed.add(item.id);
       else state.revealed.delete(item.id);
       card.classList.toggle('revealed', on);
       card.setAttribute('aria-expanded', String(on));
-      answer.replaceChildren(...(on ? buildAnswer(item) : [buildPlaceholder()]));
+      if (on) {
+        renderAnswer();
+        if (play && els.autoplay.checked && item.audios.length) {
+          playAudio(item.audios[state.voice.get(item.id) ?? 0].url);
+        }
+      } else {
+        answer.replaceChildren(buildPlaceholder());
+      }
     };
 
-    const toggle = () => setRevealed(!state.revealed.has(item.id));
-    card.addEventListener('click', toggle);
+    card.addEventListener('click', () => setRevealed(!state.revealed.has(item.id), { play: true }));
     card.addEventListener('keydown', (e) => {
+      // Ignore keys pressed on the audio buttons inside the card.
+      if (e.target !== card) return;
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
-        toggle();
+        setRevealed(!state.revealed.has(item.id), { play: true });
       }
     });
 
@@ -538,6 +636,8 @@
       if (state.items.length) applyFilters();
     });
   }
+
+  els.autoplay.addEventListener('change', savePrefs);
 
   els.prevPage.addEventListener('click', () => {
     state.page -= 1;

@@ -13,6 +13,7 @@ Each item shows its Japanese text on the left. The **meaning** and **reading** s
   - Progress: all, not started, started, reviews available now, burned.
   - Mistakes: any, missed in the last 24 h / 48 h / 7 days, leeches, never missed.
 - **Pages**: 100 items per page, with previous/next navigation.
+- **Audio (vocabulary only)**: revealing a vocabulary card plays its pronunciation automatically (toggle *Autoplay vocabulary audio when revealed*). *▶ Play* replays it, and *⇄ Other voice* switches voice actor when WaniKani provides more than one. Audio is only played on a click, never when the list is re-rendered, and clicking the audio buttons does not hide the card.
 - **Actions**: *Shuffle*, *Show all*, *Hide all* (applies to the whole filtered list).
 - **Theme**: auto (follows the system), light or dark.
 
