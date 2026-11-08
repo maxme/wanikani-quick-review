@@ -7,14 +7,16 @@
   const PAGE_SIZE = 100;
   const HOUR = 60 * 60 * 1000;
 
-  // Leech: at least LEECH_MIN_MISTAKES wrong answers, and at least LEECH_MIN_RATE of all answers wrong.
+  // Leech: at least LEECH_MIN_MISTAKES wrong answers and an overall correct rate below LEECH_MAX_PERCENT.
+  // Calibrated on a real account, where most items sit between 83% and 96% correct.
   const LEECH_MIN_MISTAKES = 3;
-  const LEECH_MIN_RATE = 0.25;
+  const LEECH_MAX_PERCENT = 85;
 
   // Storage keys are unchanged so existing tokens and preferences keep working.
   const STORAGE_TOKEN = 'wk-quick-review.token';
   const STORAGE_PREFS = 'wk-quick-review.prefs';
   const STORAGE_THEME = 'wk-quick-review.theme';
+  const STORAGE_STATS = 'wk-quick-review.stats';
 
   const TYPE_LABEL = { radical: 'Radical', kanji: 'Kanji', vocabulary: 'Vocabulary' };
   const TYPE_ORDER = { radical: 0, kanji: 1, vocabulary: 2 };
@@ -24,7 +26,9 @@
   const SRS_LABEL = { 1: 'Apprentice', 2: 'Apprentice', 3: 'Apprentice', 4: 'Apprentice', 5: 'Guru', 6: 'Guru', 7: 'Master', 8: 'Enlightened', 9: 'Burned' };
 
   const PROGRESS_VALUES = ['all', 'not-started', 'started', 'review', 'burned'];
-  const MISTAKE_VALUES = ['any', '24h', '48h', '7d', 'leech', 'never'];
+  const MISTAKE_VALUES = ['any', 'missed-24h', 'missed-48h', 'missed-7d', 'leech', 'never'];
+  // Values used by earlier versions, mapped to the current ones when preferences are restored.
+  const OLD_MISTAKE_VALUES = { '24h': 'missed-24h', '48h': 'missed-48h', '7d': 'missed-7d' };
   const THEME_LABEL = { auto: 'auto', light: 'light', dark: 'dark' };
   const THEME_NEXT = { auto: 'light', light: 'dark', dark: 'auto' };
 
@@ -55,11 +59,12 @@
     theme: $('#theme'),
   };
 
-  // Current state: all loaded items, filtered view, current page, ids whose answer is revealed,
-  // and the chosen pronunciation voice per vocabulary id.
-  const state = { items: [], view: [], page: 0, revealed: new Set(), voice: new Map() };
+  // raw: subjects and assignments as returned by the API (null until loaded)
+  // stats: Map subject id -> review history built from the local statistics cache
+  // voice: chosen pronunciation voice per vocabulary id
+  const state = { raw: null, stats: new Map(), items: [], view: [], page: 0, revealed: new Set(), voice: new Map() };
 
-  // ---------- Local storage (token, preferences, theme) ----------
+  // ---------- Local storage (token, preferences, theme, statistics cache) ----------
   function storageGet(key) {
     try { return window.localStorage.getItem(key); } catch { return null; }
   }
@@ -172,7 +177,8 @@
     // Older versions stored the progress filter under "status" with other values.
     const progress = prefs.progress ?? (prefs.status === 'review' || prefs.status === 'started' ? prefs.status : 'all');
     if (PROGRESS_VALUES.includes(progress)) els.progress.value = progress;
-    if (MISTAKE_VALUES.includes(prefs.mistakes)) els.mistakes.value = prefs.mistakes;
+    const mistakes = OLD_MISTAKE_VALUES[prefs.mistakes] ?? prefs.mistakes;
+    if (MISTAKE_VALUES.includes(mistakes)) els.mistakes.value = mistakes;
     if (typeof prefs.autoplay === 'boolean') els.autoplay.checked = prefs.autoplay;
   }
 
@@ -194,6 +200,7 @@
     return res;
   }
 
+  // Follows pagination (next_url) and returns every "data" entry of the collection.
   async function fetchAll(url, token) {
     const items = [];
     let next = url;
@@ -263,34 +270,77 @@
     return [...byVoice.values()];
   }
 
-  // Mistake history per subject, from the reviews endpoint.
-  function buildMistakeStats(reviews) {
-    const stats = new Map();
-    for (const r of reviews) {
-      const d = r.data;
-      let s = stats.get(d.subject_id);
-      if (!s) {
-        s = { reviews: 0, wrong: 0, lastMistakeAt: null };
-        stats.set(d.subject_id, s);
-      }
-      s.reviews += 1;
-      const wrong = (d.incorrect_meaning_answers || 0) + (d.incorrect_reading_answers || 0);
-      if (wrong > 0) {
-        s.wrong += wrong;
-        const t = Date.parse(d.created_at);
-        if (s.lastMistakeAt === null || t > s.lastMistakeAt) s.lastMistakeAt = t;
-      }
-    }
-    return stats;
+  // ---------- Review history ----------
+  // GET /reviews is deprecated and returns nothing, and the API keeps no timestamp per answer.
+  // review_statistics holds totals per subject, and its data_updated_at moves on every review.
+  // The app keeps a local copy and syncs it incrementally with updated_after. A miss is detected when
+  // the wrong-answer total grows between two syncs, and is dated with that review's data_updated_at.
+  // Cache entry per subject: [wrong, answered, percentCorrect, updatedAt(ms), lastMissAt(ms)]
+  const NO_HISTORY = { wrong: 0, answered: 0, percentCorrect: null, updatedAt: 0, lastMissAt: 0 };
+
+  function loadStatsCache() {
+    try {
+      const cache = JSON.parse(storageGet(STORAGE_STATS) || 'null');
+      if (cache && typeof cache.syncedAt === 'string' && cache.s) return cache;
+    } catch { /* corrupt cache: start again */ }
+    return { syncedAt: null, s: {} };
   }
 
-  function toItem(subject, assignment, mistakes) {
+  function saveStatsCache(cache) {
+    storageSet(STORAGE_STATS, JSON.stringify(cache));
+  }
+
+  function compactStat(raw) {
+    const d = raw.data;
+    return [
+      d.meaning_incorrect + d.reading_incorrect,
+      d.meaning_correct + d.meaning_incorrect + d.reading_correct + d.reading_incorrect,
+      d.percentage_correct ?? null,
+      Date.parse(raw.data_updated_at) || 0,
+    ];
+  }
+
+  // Syncs review_statistics (only changed records after the first sync) and returns the updated cache.
+  async function syncStats(token) {
+    const cache = loadStatsCache();
+    // Overlap of a few minutes, so no review made during the sync is lost. Re-read records do not double count.
+    const nextSync = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    const query = cache.syncedAt ? `?${new URLSearchParams({ updated_after: cache.syncedAt })}` : '';
+    const changed = await fetchAll(`${API_BASE}/review_statistics${query}`, token);
+
+    for (const raw of changed) {
+      const id = raw.data.subject_id;
+      const next = compactStat(raw);
+      const prev = cache.s[id];
+      // Baseline: the wrong total seen last time. Unknown on the very first sync (no misses can be dated then),
+      // and 0 for a subject that first appeared since the previous sync.
+      const baseline = prev ? prev[0] : (cache.syncedAt ? 0 : null);
+      let lastMissAt = prev ? prev[4] ?? 0 : 0;
+      if (baseline !== null && next[0] > baseline) lastMissAt = next[3];
+      cache.s[id] = [...next, lastMissAt];
+    }
+
+    cache.syncedAt = nextSync;
+    saveStatsCache(cache);
+    return cache;
+  }
+
+  function buildStatsMap(cache) {
+    const map = new Map();
+    for (const [id, [wrong, answered, percentCorrect, updatedAt, lastMissAt]] of Object.entries(cache.s)) {
+      map.set(Number(id), { wrong, answered, percentCorrect, updatedAt, lastMissAt: lastMissAt || 0 });
+    }
+    return map;
+  }
+
+  function isLeech(h) {
+    return h.wrong >= LEECH_MIN_MISTAKES && h.percentCorrect !== null && h.percentCorrect < LEECH_MAX_PERCENT;
+  }
+
+  function toItem(subject, assignment, history) {
     const d = subject.data;
     const type = subject.object;
-    // A radical has one answer per review (meaning), kanji and vocabulary have two (meaning + reading).
-    const answers = mistakes.reviews * (type === 'radical' ? 1 : 2);
-    const leech = mistakes.wrong >= LEECH_MIN_MISTAKES
-      && answers > 0 && mistakes.wrong / answers >= LEECH_MIN_RATE;
+    const h = history ?? NO_HISTORY;
     return {
       id: subject.id,
       type,
@@ -303,10 +353,8 @@
       audios: type === 'vocabulary' ? normalizeAudios(d.pronunciation_audios) : [],
       srsStage: assignment?.srs_stage ?? 0,
       availableAt: assignment?.available_at ?? null,
-      reviews: mistakes.reviews,
-      wrong: mistakes.wrong,
-      lastMistakeAt: mistakes.lastMistakeAt,
-      leech,
+      history: h,
+      leech: isLeech(h),
     };
   }
 
@@ -316,12 +364,11 @@
       || a.position - b.position;
   }
 
-  function buildItems(subjects, assignments, reviews) {
+  function buildItems() {
+    const { subjects, assignments } = state.raw;
     const bySubject = new Map(assignments.map((a) => [a.data.subject_id, a.data]));
-    const mistakes = buildMistakeStats(reviews);
-    const none = { reviews: 0, wrong: 0, lastMistakeAt: null };
     return subjects
-      .map((s) => toItem(s, bySubject.get(s.id), mistakes.get(s.id) ?? none))
+      .map((s) => toItem(s, bySubject.get(s.id), state.stats.get(s.id) ?? null))
       .sort(compareItems);
   }
 
@@ -343,13 +390,14 @@
   }
 
   function matchesMistakes(item, value, now) {
-    const within = (hours) => item.lastMistakeAt != null && item.lastMistakeAt >= now - hours * HOUR;
+    const h = item.history;
+    const since = (hours) => now - hours * HOUR;
     switch (value) {
-      case '24h': return within(24);
-      case '48h': return within(48);
-      case '7d': return within(24 * 7);
+      case 'missed-24h': return h.lastMissAt >= since(24);
+      case 'missed-48h': return h.lastMissAt >= since(48);
+      case 'missed-7d': return h.lastMissAt >= since(24 * 7);
       case 'leech': return item.leech;
-      case 'never': return item.reviews > 0 && item.wrong === 0;
+      case 'never': return h.answered > 0 && h.wrong === 0;
       default: return true;
     }
   }
@@ -424,6 +472,7 @@
   function buildCard(item) {
     const answer = el('div', { class: 'answer' });
     const srs = item.srsStage >= 1 ? SRS_LABEL[item.srsStage] : null;
+    const wrong = item.history.wrong;
     const card = el('div', {
       class: `card type-${item.type}`,
       role: 'button',
@@ -438,7 +487,7 @@
             el('span', { class: 'tag' }, `Lvl ${item.level}`),
             srs ? el('span', { class: 'tag' }, srs) : null,
             item.leech ? el('span', { class: 'tag leech' }, 'Leech') : null,
-            item.wrong > 0 ? el('span', { class: 'tag' }, `${item.wrong} miss${item.wrong > 1 ? 'es' : ''}`) : null),
+            wrong > 0 ? el('span', { class: 'tag' }, `${wrong} miss${wrong > 1 ? 'es' : ''}`) : null),
           el('span', { class: 'chevron', 'aria-hidden': 'true' }, '›')),
         answer));
 
@@ -554,19 +603,17 @@
 
     savePrefs();
     setBusy(true);
-    setMessage('Loading subjects, assignments and reviews from WaniKani…');
+    setMessage('Loading from WaniKani…');
     try {
-      const query = new URLSearchParams({
-        types: types.join(','),
-        levels: levelRange(min, max).join(','),
-        hidden: 'false',
-      });
-      const [subjects, assignments, reviews] = await Promise.all([
-        fetchAll(`${API_BASE}/subjects?${query}`, token),
-        fetchAll(`${API_BASE}/assignments`, token),
-        fetchAll(`${API_BASE}/reviews`, token),
+      const levels = levelRange(min, max).join(',');
+      const [subjects, assignments, cache] = await Promise.all([
+        fetchAll(`${API_BASE}/subjects?${new URLSearchParams({ types: types.join(','), levels, hidden: 'false' })}`, token),
+        fetchAll(`${API_BASE}/assignments?${new URLSearchParams({ subject_types: types.join(','), levels })}`, token),
+        syncStats(token),
       ]);
-      state.items = buildItems(subjects, assignments, reviews);
+      state.raw = { subjects, assignments };
+      state.stats = buildStatsMap(cache);
+      state.items = buildItems();
       applyFilters();
       setMessage(state.items.length ? '' : 'No items for these filters.');
     } catch (err) {
@@ -603,7 +650,11 @@
   });
 
   els.logout.addEventListener('click', () => {
+    // The statistics cache belongs to the account: remove it with the token.
     storageRemove(STORAGE_TOKEN);
+    storageRemove(STORAGE_STATS);
+    state.raw = null;
+    state.stats = new Map();
     state.items = [];
     state.view = [];
     state.page = 0;
@@ -633,7 +684,7 @@
   for (const select of [els.progress, els.mistakes]) {
     select.addEventListener('change', () => {
       savePrefs();
-      if (state.items.length) applyFilters();
+      if (state.raw) applyFilters();
     });
   }
 
