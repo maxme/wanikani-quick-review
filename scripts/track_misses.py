@@ -12,6 +12,7 @@ A miss is an increase of a subject's wrong-answer total between two runs. The fi
 records the baseline, so it detects nothing.
 """
 
+import http.client
 import json
 import os
 import sys
@@ -38,8 +39,10 @@ def fetch_json(url, token, attempt=0):
         headers={"Authorization": f"Bearer {token}", "Wanikani-Revision": REVISION},
     )
     try:
+        # Read the whole body inside the try: a connection cut mid-transfer shows up here.
         with urllib.request.urlopen(request, timeout=60) as response:
-            return json.load(response)
+            body = response.read()
+        return json.loads(body)
     except urllib.error.HTTPError as error:
         # Only the status code is shown: no headers, no token.
         if error.code == 429 and attempt < MAX_RETRIES:
@@ -50,6 +53,14 @@ def fetch_json(url, token, attempt=0):
         if error.code in (401, 403):
             sys.exit("WaniKani rejected the token (401/403). Check the WANIKANI_TOKEN secret.")
         sys.exit(f"WaniKani API error: HTTP {error.code}")
+    except (http.client.HTTPException, urllib.error.URLError, TimeoutError, ConnectionError) as error:
+        # Network failure or truncated response: retry the same request after a pause.
+        if attempt < MAX_RETRIES:
+            wait = 5 * (attempt + 1)
+            print(f"Network error ({type(error).__name__}), retrying in {wait}s")
+            time.sleep(wait)
+            return fetch_json(url, token, attempt + 1)
+        sys.exit(f"Network error after {MAX_RETRIES} retries: {type(error).__name__}")
 
 
 def fetch_changed(updated_after, token):
