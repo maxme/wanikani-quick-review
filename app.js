@@ -26,9 +26,12 @@
   const SRS_LABEL = { 1: 'Apprentice', 2: 'Apprentice', 3: 'Apprentice', 4: 'Apprentice', 5: 'Guru', 6: 'Guru', 7: 'Master', 8: 'Enlightened', 9: 'Burned' };
 
   const PROGRESS_VALUES = ['all', 'not-started', 'started', 'review', 'burned'];
-  const MISTAKE_VALUES = ['any', 'missed-24h', 'missed-48h', 'missed-7d', 'leech', 'never'];
+  const MISTAKE_VALUES = ['any', 'since-last-visit', 'leech', 'never'];
   // Values used by earlier versions, mapped to the current ones when preferences are restored.
-  const OLD_MISTAKE_VALUES = { '24h': 'missed-24h', '48h': 'missed-48h', '7d': 'missed-7d' };
+  const OLD_MISTAKE_VALUES = {
+    '24h': 'since-last-visit', '48h': 'since-last-visit', '7d': 'since-last-visit',
+    'missed-24h': 'since-last-visit', 'missed-48h': 'since-last-visit', 'missed-7d': 'since-last-visit',
+  };
   const THEME_LABEL = { auto: 'auto', light: 'light', dark: 'dark' };
   const THEME_NEXT = { auto: 'light', light: 'dark', dark: 'auto' };
 
@@ -62,7 +65,7 @@
   // raw: subjects and assignments as returned by the API (null until loaded)
   // stats: Map subject id -> review history built from the local statistics cache
   // voice: chosen pronunciation voice per vocabulary id
-  const state = { raw: null, stats: new Map(), items: [], view: [], page: 0, revealed: new Set(), voice: new Map() };
+  const state = { raw: null, stats: new Map(), previousVisit: null, items: [], view: [], page: 0, revealed: new Set(), voice: new Map() };
 
   // ---------- Local storage (token, preferences, theme, statistics cache) ----------
   function storageGet(key) {
@@ -272,9 +275,10 @@
 
   // ---------- Review history ----------
   // GET /reviews is deprecated and returns nothing, and the API keeps no timestamp per answer.
-  // review_statistics holds totals per subject, and its data_updated_at moves on every review.
-  // The app keeps a local copy and syncs it incrementally with updated_after. A miss is detected when
-  // the wrong-answer total grows between two syncs, and is dated with that review's data_updated_at.
+  // review_statistics holds the wrong-answer totals per subject. The app keeps a local copy and syncs it
+  // incrementally with updated_after on every load. A miss is detected when a subject's wrong total grows
+  // between two loads, and it is recorded with the time of that load. So "missed since previous visit"
+  // is exact for the period between two visits, but it cannot see misses made before the first visit.
   // Cache entry per subject: [wrong, answered, percentCorrect, updatedAt(ms), lastMissAt(ms)]
   const NO_HISTORY = { wrong: 0, answered: 0, percentCorrect: null, updatedAt: 0, lastMissAt: 0 };
 
@@ -283,7 +287,7 @@
       const cache = JSON.parse(storageGet(STORAGE_STATS) || 'null');
       if (cache && typeof cache.syncedAt === 'string' && cache.s) return cache;
     } catch { /* corrupt cache: start again */ }
-    return { syncedAt: null, s: {} };
+    return { syncedAt: null, visitedAt: null, s: {} };
   }
 
   function saveStatsCache(cache) {
@@ -301,10 +305,12 @@
   }
 
   // Syncs review_statistics (only changed records after the first sync) and returns the updated cache.
+  // The cache also keeps previousVisit: the time of the load before this one, used by "since last visit".
   async function syncStats(token) {
     const cache = loadStatsCache();
+    const now = Date.now();
     // Overlap of a few minutes, so no review made during the sync is lost. Re-read records do not double count.
-    const nextSync = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    const nextSync = new Date(now - 5 * 60 * 1000).toISOString();
     const query = cache.syncedAt ? `?${new URLSearchParams({ updated_after: cache.syncedAt })}` : '';
     const changed = await fetchAll(`${API_BASE}/review_statistics${query}`, token);
 
@@ -312,17 +318,19 @@
       const id = raw.data.subject_id;
       const next = compactStat(raw);
       const prev = cache.s[id];
-      // Baseline: the wrong total seen last time. Unknown on the very first sync (no misses can be dated then),
+      // Baseline: the wrong total seen last time. Unknown on the very first sync (no misses can be detected then),
       // and 0 for a subject that first appeared since the previous sync.
       const baseline = prev ? prev[0] : (cache.syncedAt ? 0 : null);
       let lastMissAt = prev ? prev[4] ?? 0 : 0;
-      if (baseline !== null && next[0] > baseline) lastMissAt = next[3];
+      if (baseline !== null && next[0] > baseline) lastMissAt = now;
       cache.s[id] = [...next, lastMissAt];
     }
 
+    const previousVisit = cache.visitedAt;
     cache.syncedAt = nextSync;
+    cache.visitedAt = now;
     saveStatsCache(cache);
-    return cache;
+    return { ...cache, previousVisit };
   }
 
   function buildStatsMap(cache) {
@@ -389,13 +397,11 @@
     }
   }
 
-  function matchesMistakes(item, value, now) {
+  function matchesMistakes(item, value) {
     const h = item.history;
-    const since = (hours) => now - hours * HOUR;
     switch (value) {
-      case 'missed-24h': return h.lastMissAt >= since(24);
-      case 'missed-48h': return h.lastMissAt >= since(48);
-      case 'missed-7d': return h.lastMissAt >= since(24 * 7);
+      case 'since-last-visit':
+        return state.previousVisit !== null && h.lastMissAt > 0 && h.lastMissAt >= state.previousVisit;
       case 'leech': return item.leech;
       case 'never': return h.answered > 0 && h.wrong === 0;
       default: return true;
@@ -613,6 +619,7 @@
       ]);
       state.raw = { subjects, assignments };
       state.stats = buildStatsMap(cache);
+      state.previousVisit = cache.previousVisit ?? null;
       state.items = buildItems();
       applyFilters();
       setMessage(state.items.length ? '' : 'No items for these filters.');
@@ -655,6 +662,7 @@
     storageRemove(STORAGE_STATS);
     state.raw = null;
     state.stats = new Map();
+    state.previousVisit = null;
     state.items = [];
     state.view = [];
     state.page = 0;

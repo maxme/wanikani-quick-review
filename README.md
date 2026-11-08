@@ -11,7 +11,7 @@ Each item shows its Japanese text on the left. The **meaning** and **reading** s
   - Types: radicals, kanji, vocabulary. Radicals show meaning only (no reading).
   - Level range.
   - Progress: all, not started, started, reviews available now, burned.
-  - Mistakes: any, missed in the last 24 h / 48 h / 7 days, leeches, never missed.
+  - Mistakes: any, missed since your previous visit, leeches, never missed.
 - **Pages**: 100 items per page, with previous/next navigation.
 - **Audio (vocabulary only)**: revealing a vocabulary card plays its pronunciation automatically (toggle *Autoplay vocabulary audio when revealed*). *▶ Play* replays it, and *⇄ Other voice* switches voice actor when WaniKani provides more than one. Audio is only played on a click, never when the list is re-rendered, and clicking the audio buttons does not hide the card.
 - **Actions**: *Shuffle*, *Show all*, *Hide all* (applies to the whole filtered list).
@@ -19,12 +19,16 @@ Each item shows its Japanese text on the left. The **meaning** and **reading** s
 
 ### Mistake definitions
 
-Mistakes come from your WaniKani review history (`/v2/reviews`).
+WaniKani no longer exposes the time of each answer: `GET /reviews` is deprecated and returns nothing.
+The app uses `review_statistics` instead, which holds the wrong-answer totals per item.
 
-- *Missed in the last N hours/days*: at least one wrong answer (meaning or reading) during that window.
-- *Leech*: at least 3 wrong answers in total, and wrong answers make up at least 25% of all answers.
-  Answers are counted as reviews × 2 for kanji and vocabulary (meaning + reading), and × 1 for radicals.
-  The thresholds are constants at the top of `app.js` (`LEECH_MIN_MISTAKES`, `LEECH_MIN_RATE`).
+- *Missed since your previous visit*: each load syncs the statistics incrementally (`updated_after`) and compares
+  each item's wrong-answer total with the value seen on the previous load. An increase is recorded as a miss at
+  the time of that load. The first visit has no baseline, so it shows nothing.
+- *Leech*: at least 3 wrong answers in total, and under 85% correct overall (thresholds at the top of `app.js`).
+- *Never missed*: at least one answer, and no wrong answer.
+
+The statistics cache is stored in the browser and cleared on *Change token*.
 
 ## Run locally
 
