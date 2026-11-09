@@ -114,9 +114,9 @@
     },
   ];
   // ---------- Sort orders ----------
-  // Each order is a list of [key, direction] (1 ascending, -1 descending). Reversing flips every direction,
-  // but items without a value (null: never reviewed, no frequency, not in the JLPT lists…) always stay last.
-  // Remaining ties keep the WaniKani order (level, type, lesson position) through a stable sort.
+  // Each order is a list of [key, direction] (1 ascending, -1 descending), then the WaniKani order (level, type,
+  // lesson position) for ties. Reversing flips every direction, ties included, so the list is an exact mirror,
+  // except that items without a value (null: never reviewed, no frequency, not in the JLPT lists…) stay last.
   function compareKey(x, y, dir) {
     if (x === y) return 0;
     if (x == null) return 1;
@@ -149,7 +149,7 @@
   };
 
   function sortComparator(order, reversed) {
-    const keys = SORTS[order].keys.map(([key, dir]) => [key, reversed ? -dir : dir]);
+    const keys = [...SORTS[order].keys, ...SORTS.level.keys].map(([key, dir]) => [key, reversed ? -dir : dir]);
     return (a, b) => {
       for (const [key, dir] of keys) {
         const c = compareKey(key(a), key(b), dir);
@@ -367,17 +367,15 @@
   function updateSortLabel() {
     const sort = SORTS[els.sort.value];
     const random = !sort.keys;
-    const reversed = state.reversed && !random;
-    const label = reversed ? sort.reversedLabel : sort.label;
+    const reversed = state.reversed;
+    const label = random ? sort.label : reversed ? sort.reversedLabel : sort.label;
     els.sortLabel.textContent = label.replace(/ \(.*\)$/, '');
     const wrapper = els.sort.parentElement;
     wrapper.title = `Order: ${label}`;
     wrapper.classList.toggle('active', els.sort.value !== 'level' || reversed);
-    // Reversing a random order means nothing.
-    els.reverse.disabled = random;
     els.reverse.setAttribute('aria-pressed', String(reversed));
     els.reverse.textContent = reversed ? '↑' : '↓';
-    els.reverse.title = random ? 'Reverse order (not for random)' : reversed ? `Reversed: ${label}` : 'Reverse order';
+    els.reverse.title = reversed ? `Reversed: ${label}` : 'Reverse order';
     els.reverse.setAttribute('aria-label', els.reverse.title);
   }
 
@@ -1019,6 +1017,7 @@
   // The shuffle button switches to the random order and draws a new one each time.
   function shuffleView() {
     els.sort.value = 'random';
+    state.reversed = false;
     updateSortLabel();
     savePrefs();
     sortView();
@@ -1318,7 +1317,14 @@
     updateSortLabel();
     savePrefs();
     if (!state.raw) return;
-    applyFilters();
+    if (els.sort.value === 'random') {
+      // A random order is not drawn again: the current one is turned around.
+      state.view.reverse();
+      state.page = 0;
+      renderList();
+    } else {
+      applyFilters();
+    }
     window.scrollTo({ top: 0 });
   });
 
