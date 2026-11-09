@@ -165,22 +165,6 @@ select {
   width: 100%;
 }
 
-.chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.35rem 0.8rem;
-  border: 2px solid var(--chip-color, var(--border));
-  border-radius: 999px;
-  color: var(--text);
-  cursor: pointer;
-  user-select: none;
-}
-
-.chip input { accent-color: var(--chip-color, var(--accent)); margin: 0; }
-.chip.type-radical { --chip-color: var(--radical); }
-.chip.type-kanji { --chip-color: var(--kanji); }
-.chip.type-vocabulary { --chip-color: var(--vocab); }
 
 button {
   font: inherit;
@@ -590,9 +574,14 @@ button:disabled { opacity: 0.5; cursor: progress; }
   .row { grid-template-columns: 1fr; }
 }
 
-/* Japanese level filters: two columns even on phones (the selects are short). */
-.jp-filters { display: grid; gap: 0.5rem; }
-.jp-filters .row-keep { grid-template-columns: 1fr 1fr; }
+/* Chip filter groups in the panel */
+.filters .row-keep { grid-template-columns: 1fr 1fr; }
+.filter-groups { display: grid; gap: 0.9rem; }
+.filter-group { display: grid; gap: 0.35rem; }
+.filter-group legend { margin-bottom: 0.1rem; }
+.chips { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.quick.empty { opacity: 0.5; }
+.clear-filters { margin: -0.25rem 0 0.75rem; font-size: 0.85rem; padding: 0.3rem 0.75rem; }
 .tag.jlpt { font-weight: 600; }
 
 /* Quick JLPT filters, labelled; on phones each row of quick filters scrolls sideways to stay one line high. */

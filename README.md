@@ -7,13 +7,15 @@ Each item shows its Japanese text on the left. The **meaning** and **reading** s
 
 - **Sign in**: paste your WaniKani API token (*Settings → API Tokens*). A read-only token is enough.
 - **Storage**: the token is kept in your browser's `localStorage`. It is never written into the code and only sent to `api.wanikani.com`. *Change token* clears it.
-- **Filters**
-  - Types: radicals, kanji, vocabulary (including kana-only vocabulary). Radicals show meaning only (no reading).
-  - Level range.
-  - Progress: all, not started, started, reviews available now, burned.
-  - Mistakes: any, missed in the last 24 h / 48 h / 7 days, leeches, never missed.
-  - Japanese level (radicals are left out when one is set): JLPT N5–N1, frequency, school grade, word type. See below.
-  - Quick buttons above the list for mistakes and JLPT (N5, N4, … N1, N5 + N4, N5 – N3, N5 – N2), each with its item count.
+- **Filters**: every filter is a group of chips, applied as soon as it changes.
+  - Chips of one group add up (N5 + N4 shows both levels); groups combine (N5 + N4 *and* missed in the last 7 days).
+    No chip selected in a group means no constraint. Each chip shows how many items it matches with the other filters.
+  - Groups: type, SRS stage (not started, apprentice, guru, master, enlightened, burned), reviews available now, mistakes
+    (missed in the last 24 h / 48 h / 7 days, leeches, never missed), JLPT N5–N1, frequency (disjoint bands, so they add up
+    to a top N), school grade, word type. Plus the level range.
+  - Mistakes and JLPT chips are also shown above the list, with *Clear all filters*.
+  - JLPT, frequency, school grade and word type leave radicals out once a chip is selected. See below.
+  - Preferences of earlier versions (one value per filter) are converted to chips.
 - **Cache**: subjects and assignments of every level are kept in the browser (IndexedDB). After the first load, the list
   is shown at once from the cache, and only records changed since the last visit are requested (`updated_after`), so a
   visit usually costs three small API requests. Changing the type or level range needs no request. *Change token* clears it.

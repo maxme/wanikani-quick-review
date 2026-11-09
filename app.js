@@ -29,24 +29,11 @@
   const READING_ORDER = ['onyomi', 'kunyomi', 'nanori', 'reading'];
   const SRS_LABEL = { 1: 'Apprentice', 2: 'Apprentice', 3: 'Apprentice', 4: 'Apprentice', 5: 'Guru', 6: 'Guru', 7: 'Master', 8: 'Enlightened', 9: 'Burned' };
 
-  const PROGRESS_VALUES = ['all', 'not-started', 'started', 'review', 'burned'];
-  const MISTAKE_VALUES = ['any', 'missed-24h', 'missed-48h', 'missed-7d', 'leech', 'never'];
-  // Values used by earlier versions, mapped to the current ones when preferences are restored.
-  const OLD_MISTAKE_VALUES = { 'since-last-visit': 'any' };
-  // Filters from data/japanese.json (JLPT, frequency, school grade) and from WaniKani parts of speech.
-  // 'upto4' = N5 and N4, 'upto3' = N5 to N3, 'upto2' = N5 to N2.
-  const JLPT_VALUES = ['any', '5', '4', '3', '2', '1', 'upto4', 'upto3', 'upto2', 'none'];
-  const JLPT_QUICK = ['any', '5', '4', '3', '2', '1', 'upto4', 'upto3', 'upto2'];
-  const JLPT_QUICK_LABEL = {
-    any: 'All', 5: 'N5', 4: 'N4', 3: 'N3', 2: 'N2', 1: 'N1', upto4: 'N5 + N4', upto3: 'N5 – N3', upto2: 'N5 – N2',
-  };
-  const FREQUENCY_VALUES = ['any', '500', '1000', '2500', '5000', '10000', 'rare'];
-  const GRADE_VALUES = ['any', '1', '2', '3', '4', '5', '6', '8', '9', 'none'];
   // Grade scale: 1-6 elementary school, 8 secondary school, 9-10 jinmeiyo (names), NOT_JOYO otherwise.
   const NOT_JOYO = 11;
   // JMdict frequency bands hold 500 words each.
   const FREQUENCY_BAND = 500;
-  const RARE_FROM = 10000;
+  const STAGE_GROUP = ['not-started', 'apprentice', 'apprentice', 'apprentice', 'apprentice', 'guru', 'guru', 'master', 'enlightened', 'burned'];
   const POS_GROUPS = {
     noun: ['noun', 'proper noun', 'pronoun', 'independent noun', 'verbal noun'],
     verb: ['godan verb', 'ichidan verb', 'する verb', 'transitive verb', 'intransitive verb'],
@@ -63,7 +50,73 @@
     counter: ['counter', 'numeral'],
     affix: ['prefix', 'suffix'],
   };
-  const POS_VALUES = ['any', ...Object.keys(POS_GROUPS)];
+  // Frequency chips are disjoint bands, so selecting several adds them up (Top 500 + 501–1,000 = top 1,000).
+  const FREQUENCY_RANGE = { 500: [0, 500], 1000: [500, 1000], 2500: [1000, 2500], 5000: [2500, 5000], 10000: [5000, 10000] };
+
+  // ---------- Filter model ----------
+  // Every filter is a group of chips. Chips of one group add up (OR); groups combine (AND).
+  // No chip selected in a group = no constraint. "japanese" groups leave radicals out once a chip is selected.
+  const FILTER_GROUPS = [
+    {
+      key: 'types', label: 'Type', summary: (labels) => labels.join(', '),
+      options: [['radical', 'Radicals'], ['kanji', 'Kanji'], ['vocabulary', 'Vocabulary']],
+      test: (item, v) => item.type === v,
+    },
+    {
+      key: 'progress', label: 'SRS stage',
+      options: [['not-started', 'Not started'], ['apprentice', 'Apprentice'], ['guru', 'Guru'], ['master', 'Master'],
+        ['enlightened', 'Enlightened'], ['burned', 'Burned']],
+      test: (item, v) => STAGE_GROUP[item.srsStage] === v,
+    },
+    {
+      key: 'due', label: 'Reviews',
+      options: [['now', 'Available now']],
+      test: (item, v, now) => item.srsStage >= 1 && item.srsStage < 9
+        && item.availableAt != null && Date.parse(item.availableAt) <= now,
+    },
+    {
+      key: 'mistakes', label: 'Mistakes', quick: true,
+      hint: 'A miss is counted when the last review of an item had a wrong answer and happened within the period. '
+        + 'Leech: 10+ misses and under 80% correct.',
+      options: [['missed-24h', 'Missed 24 h'], ['missed-48h', 'Missed 48 h'], ['missed-7d', 'Missed 7 days'],
+        ['leech', 'Leeches'], ['never', 'Never missed']],
+      test: (item, v, now) => matchesMistake(item, v, now),
+    },
+    {
+      key: 'jlpt', label: 'JLPT', japanese: true, quick: true, summary: (labels) => `JLPT ${labels.join(' + ')}`,
+      hint: 'Jonathan Waller’s lists (unofficial: the JLPT has published no list since 2010).',
+      options: [['5', 'N5'], ['4', 'N4'], ['3', 'N3'], ['2', 'N2'], ['1', 'N1'], ['none', 'Not in JLPT']],
+      test: (item, v) => (v === 'none' ? item.jlpt === null : item.jlpt === Number(v)),
+    },
+    {
+      key: 'frequency', label: 'Frequency', japanese: true,
+      hint: 'Newspaper rank for kanji (KANJIDIC), JMdict frequency band for words.',
+      options: [['500', 'Top 500'], ['1000', '501–1,000'], ['2500', '1,001–2,500'], ['5000', '2,501–5,000'],
+        ['10000', '5,001–10,000'], ['rare', 'Rarer']],
+      test: (item, v) => {
+        if (v === 'rare') return item.frequency === null || item.frequency > 10000;
+        const [low, high] = FREQUENCY_RANGE[v];
+        return item.frequency !== null && item.frequency > low && item.frequency <= high;
+      },
+    },
+    {
+      key: 'grade', label: 'School grade', japanese: true,
+      hint: 'School year a kanji is taught in; for a word, its hardest kanji.',
+      options: [['1', 'Grade 1'], ['2', 'Grade 2'], ['3', 'Grade 3'], ['4', 'Grade 4'], ['5', 'Grade 5'], ['6', 'Grade 6'],
+        ['8', 'Secondary'], ['9', 'Jinmeiyō (names)'], ['none', 'Not jōyō']],
+      test: (item, v) => item.grade === (v === 'none' ? NOT_JOYO : Number(v)),
+    },
+    {
+      key: 'pos', label: 'Word type', japanese: true,
+      options: [['noun', 'Nouns'], ['verb', 'Verbs'], ['godan', 'Godan'], ['ichidan', 'Ichidan'], ['suru', 'する verbs'],
+        ['transitive', 'Transitive'], ['intransitive', 'Intransitive'], ['i-adj', 'い adjectives'],
+        ['na-adj', 'な adjectives'], ['no-adj', 'の adjectives'], ['adverb', 'Adverbs'], ['expression', 'Expressions'],
+        ['counter', 'Counters, numerals'], ['affix', 'Prefixes, suffixes']],
+      test: (item, v) => item.partsOfSpeech.some((p) => POS_GROUPS[v].includes(p)),
+    },
+  ];
+  const GROUP_BY_KEY = Object.fromEntries(FILTER_GROUPS.map((g) => [g.key, g]));
+  const emptyFilters = () => Object.fromEntries(FILTER_GROUPS.map((g) => [g.key, new Set()]));
   const JAPANESE_DATA_URL = 'data/japanese.json';
   const HAN = /\p{Script=Han}/u;
   const THEME_LABEL = { auto: 'auto', light: 'light', dark: 'dark' };
@@ -79,13 +132,10 @@
     filtersForm: $('#filters-form'),
     levelMin: $('#level-min'),
     levelMax: $('#level-max'),
-    progress: $('#progress'),
-    mistakes: $('#mistakes'),
-    jlpt: $('#jlpt'),
+    filterGroups: $('#filter-groups'),
+    quickMistakes: $('#quick-mistakes'),
     quickJlpt: $('#quick-jlpt'),
-    frequency: $('#frequency'),
-    grade: $('#grade'),
-    pos: $('#pos'),
+    clearFilters: $('#clear-filters'),
     autoplay: $('#autoplay'),
     results: $('#results'),
     count: $('#count'),
@@ -101,14 +151,14 @@
     theme: $('#theme'),
     filtersPanel: $('#filters-panel'),
     filtersSummary: $('#filters-summary'),
-    quickFilters: $('#quick-filters'),
     revealedCount: $('#revealed-count'),
   };
 
   // raw: subjects and assignments as returned by the API (null until loaded)
   // stats: Map subject id -> review history built from the local statistics cache
   // voice: chosen pronunciation voice per vocabulary id
-  const state = { raw: null, stats: new Map(), items: [], view: [], page: 0, revealed: new Set(), voice: new Map() };
+  // filters: Set of selected chip values per filter group
+  const state = { filters: emptyFilters(), raw: null, stats: new Map(), items: [], view: [], page: 0, revealed: new Set(), voice: new Map() };
 
   // ---------- Local storage (token, preferences, theme, statistics cache) ----------
   function storageGet(key) {
@@ -130,15 +180,10 @@
 
   function savePrefs() {
     storageSet(STORAGE_PREFS, JSON.stringify({
-      types: selectedTypes(),
+      version: 2,
       levelMin: Number(els.levelMin.value),
       levelMax: Number(els.levelMax.value),
-      progress: els.progress.value,
-      mistakes: els.mistakes.value,
-      jlpt: els.jlpt.value,
-      frequency: els.frequency.value,
-      grade: els.grade.value,
-      pos: els.pos.value,
+      filters: Object.fromEntries(Object.entries(state.filters).map(([key, set]) => [key, [...set]])),
       autoplay: els.autoplay.checked,
     }));
   }
@@ -203,10 +248,6 @@
   }
 
   // ---------- Filters ----------
-  function selectedTypes() {
-    return [...els.filtersForm.querySelectorAll('input[name="types"]:checked')].map((i) => i.value);
-  }
-
   function populateLevels() {
     for (const select of [els.levelMin, els.levelMax]) {
       for (let n = 1; n <= LEVEL_MAX; n++) select.append(el('option', { value: n }, n));
@@ -214,28 +255,38 @@
     els.levelMax.value = String(LEVEL_MAX);
   }
 
+  // Preferences of earlier versions held one value per select; they map to chips here.
+  function migrateFilters(prefs) {
+    const f = {};
+    if (Array.isArray(prefs.types) && prefs.types.length < 3) f.types = prefs.types;
+    const progress = prefs.progress ?? prefs.status;
+    if (progress === 'not-started') f.progress = ['not-started'];
+    if (progress === 'started') f.progress = ['apprentice', 'guru', 'master', 'enlightened', 'burned'];
+    if (progress === 'burned') f.progress = ['burned'];
+    if (progress === 'review') f.due = ['now'];
+    if (prefs.mistakes && prefs.mistakes !== 'any') f.mistakes = [prefs.mistakes];
+    const upTo = { upto4: ['5', '4'], upto3: ['5', '4', '3'], upto2: ['5', '4', '3', '2'] };
+    if (prefs.jlpt && prefs.jlpt !== 'any') f.jlpt = upTo[prefs.jlpt] ?? [prefs.jlpt];
+    const bands = ['500', '1000', '2500', '5000', '10000'];
+    if (prefs.frequency === 'rare') f.frequency = ['rare'];
+    else if (bands.includes(prefs.frequency)) f.frequency = bands.slice(0, bands.indexOf(prefs.frequency) + 1);
+    if (prefs.grade && prefs.grade !== 'any') f.grade = [prefs.grade];
+    if (prefs.pos && prefs.pos !== 'any') f.pos = [prefs.pos];
+    return f;
+  }
+
   function restorePrefs() {
     const prefs = loadPrefs();
-    if (Array.isArray(prefs.types)) {
-      for (const input of els.filtersForm.querySelectorAll('input[name="types"]')) {
-        input.checked = prefs.types.includes(input.value);
-      }
-    }
     if (Number.isInteger(prefs.levelMin)) els.levelMin.value = String(Math.min(Math.max(prefs.levelMin, 1), LEVEL_MAX));
     if (Number.isInteger(prefs.levelMax)) els.levelMax.value = String(Math.min(Math.max(prefs.levelMax, 1), LEVEL_MAX));
-
-    // Older versions stored the progress filter under "status" with other values.
-    const progress = prefs.progress ?? (prefs.status === 'review' || prefs.status === 'started' ? prefs.status : 'all');
-    if (PROGRESS_VALUES.includes(progress)) els.progress.value = progress;
-    const mistakes = OLD_MISTAKE_VALUES[prefs.mistakes] ?? prefs.mistakes;
-    if (MISTAKE_VALUES.includes(mistakes)) els.mistakes.value = mistakes;
-    const restoreSelect = (select, values, value) => {
-      if (values.includes(value)) select.value = value;
-    };
-    restoreSelect(els.jlpt, JLPT_VALUES, prefs.jlpt);
-    restoreSelect(els.frequency, FREQUENCY_VALUES, prefs.frequency);
-    restoreSelect(els.grade, GRADE_VALUES, prefs.grade);
-    restoreSelect(els.pos, POS_VALUES, prefs.pos);
+    const saved = prefs.version === 2 ? prefs.filters ?? {} : migrateFilters(prefs);
+    state.filters = emptyFilters();
+    for (const group of FILTER_GROUPS) {
+      const valid = new Set(group.options.map(([value]) => value));
+      for (const value of Array.isArray(saved[group.key]) ? saved[group.key] : []) {
+        if (valid.has(value)) state.filters[group.key].add(value);
+      }
+    }
     if (typeof prefs.autoplay === 'boolean') els.autoplay.checked = prefs.autoplay;
   }
 
@@ -532,36 +583,17 @@
       || a.position - b.position;
   }
 
-  // Everything is cached; the type and level filters are applied here.
+  // Every subject of every level; all filters, type and level included, are applied in applyFilters.
   function buildItems() {
     const { subjects, assignments, japanese } = state.raw;
-    const types = new Set(selectedTypes());
-    const min = Number(els.levelMin.value);
-    const max = Number(els.levelMax.value);
     return Object.values(subjects)
-      .filter((s) => !s.hidden && types.has(s.type) && s.level >= min && s.level <= max)
+      .filter((s) => !s.hidden)
       .map((s) => toItem(s, assignments[s.id], state.stats.get(s.id) ?? null, japanese))
       .sort(compareItems);
   }
 
   // ---------- Filter predicates ----------
-  function matchesProgress(item, value, now) {
-    switch (value) {
-      case 'not-started':
-        return item.srsStage === 0;
-      case 'started':
-        return item.srsStage >= 1;
-      case 'review':
-        return item.srsStage >= 1 && item.srsStage < 9
-          && item.availableAt != null && Date.parse(item.availableAt) <= now;
-      case 'burned':
-        return item.srsStage === 9;
-      default:
-        return true;
-    }
-  }
-
-  function matchesMistakes(item, value, now) {
+  function matchesMistake(item, value, now) {
     const h = item.history;
     // The last review had a miss and happened within the window.
     const missedWithin = (hours) => h.lastReviewMissed && h.lastReviewAt >= now - hours * HOUR;
@@ -571,36 +603,18 @@
       case 'missed-7d': return missedWithin(24 * 7);
       case 'leech': return item.leech;
       case 'never': return h.answered > 0 && h.wrong === 0;
-      default: return true;
+      default: return false;
     }
   }
 
-  function matchesJlpt(item, value) {
-    if (value === 'any') return true;
-    if (value === 'none') return item.jlpt === null;
-    // N5 is the easiest level: "up to N3" keeps N5, N4 and N3.
-    if (value.startsWith('upto')) return item.jlpt !== null && item.jlpt >= Number(value.slice(4));
-    return item.jlpt === Number(value);
-  }
-
-  // JLPT, frequency, grade and word type. Any value other than "any" leaves radicals out.
-  function matchesJapanese(item, f) {
-    if (item.type === 'radical' && (f.jlpt !== 'any' || f.frequency !== 'any' || f.grade !== 'any' || f.pos !== 'any')) {
-      return false;
+  // An item passes a group when no chip is selected, or when it matches at least one selected chip.
+  function matchesGroup(item, group, selected, now) {
+    if (selected.size === 0) return true;
+    if (group.japanese && item.type === 'radical') return false;
+    for (const value of selected) {
+      if (group.test(item, value, now)) return true;
     }
-    if (!matchesJlpt(item, f.jlpt)) return false;
-    if (f.frequency === 'rare') {
-      if (item.frequency !== null && item.frequency <= RARE_FROM) return false;
-    } else if (f.frequency !== 'any' && !(item.frequency !== null && item.frequency <= Number(f.frequency))) {
-      return false;
-    }
-    if (f.grade !== 'any' && item.grade !== (f.grade === 'none' ? NOT_JOYO : Number(f.grade))) return false;
-    if (f.pos !== 'any' && !item.partsOfSpeech.some((p) => POS_GROUPS[f.pos].includes(p))) return false;
-    return true;
-  }
-
-  function japaneseFilters() {
-    return { jlpt: els.jlpt.value, frequency: els.frequency.value, grade: els.grade.value, pos: els.pos.value };
+    return false;
   }
 
   // ---------- Card rendering ----------
@@ -763,23 +777,24 @@
     els.results.hidden = false;
   }
 
-  const QUICK_LABEL = {
-    any: 'All', 'missed-24h': 'Missed 24 h', 'missed-48h': 'Missed 48 h', 'missed-7d': 'Missed 7 days',
-    leech: 'Leeches', never: 'Never missed',
-  };
+  const hasActiveFilters = () => FILTER_GROUPS.some((g) => state.filters[g.key].size > 0);
 
   // One-line summary of the filters, shown when the filter panel is collapsed.
   function updateFiltersSummary() {
-    const types = selectedTypes().map((t) => TYPE_LABEL[t]).join(', ') || 'No type';
     const levels = els.levelMin.value === els.levelMax.value
       ? `Level ${els.levelMin.value}`
       : `Levels ${els.levelMin.value}–${els.levelMax.value}`;
-    const progress = els.progress.selectedOptions[0]?.textContent ?? '';
-    // Japanese level filters are listed only when set.
-    const extra = [els.jlpt, els.frequency, els.grade, els.pos]
-      .filter((select) => select.value !== 'any')
-      .map((select) => (select === els.jlpt && select.value !== 'none' ? `JLPT ${JLPT_QUICK_LABEL[select.value]}` : select.selectedOptions[0].textContent));
-    els.filtersSummary.textContent = [types, levels, progress, ...extra].join(' · ');
+    const parts = [levels];
+    for (const group of FILTER_GROUPS) {
+      const selected = state.filters[group.key];
+      if (!selected.size) continue;
+      // Labels in the order of the chips, not of the clicks.
+      const labels = group.options.filter(([value]) => selected.has(value)).map(([, label]) => label);
+      parts.push(group.summary ? group.summary(labels) : labels.join(' + '));
+    }
+    if (parts.length === 1) parts.push('No filter');
+    els.filtersSummary.textContent = parts.join(' · ');
+    els.clearFilters.hidden = !hasActiveFilters();
   }
 
   function updateRevealedCount() {
@@ -787,41 +802,77 @@
     els.revealedCount.textContent = state.view.length ? `${revealed} / ${state.view.length} revealed` : '';
   }
 
-  // A row of quick buttons that set a select, each with the number of items it would show.
-  function renderChips(container, select, values, labels, countFor) {
-    const current = select.value;
-    container.replaceChildren(...values.map((value) => {
-      const button = el('button', {
-        type: 'button',
-        class: value === current ? 'quick active' : 'quick',
-        'aria-pressed': String(value === current),
-      }, labels[value], ' ', el('span', { class: 'quick-count' }, countFor(value)));
-      button.addEventListener('click', () => {
-        select.value = value;
-        select.dispatchEvent(new Event('change'));
-      });
-      return button;
-    }));
+  function toggleChip(group, value) {
+    const selected = state.filters[group.key];
+    if (selected.has(value)) selected.delete(value);
+    else selected.add(value);
+    savePrefs();
+    applyFilters();
   }
 
-  const countMatching = (items, test) => items.reduce((n, item) => n + (test(item) ? 1 : 0), 0);
+  // Chips of one group. counts: Map value -> number of items this chip matches within the other groups,
+  // or null before the data is loaded.
+  function buildChips(group, counts) {
+    const selected = state.filters[group.key];
+    return group.options.map(([value, label]) => {
+      const on = selected.has(value);
+      const count = counts?.get(value);
+      const button = el('button', {
+        type: 'button',
+        class: `quick${on ? ' active' : ''}${count === 0 && !on ? ' empty' : ''}`,
+        'aria-pressed': String(on),
+      }, label, count === undefined ? null : el('span', { class: 'quick-count' }, count));
+      button.addEventListener('click', () => toggleChip(group, value));
+      return button;
+    });
+  }
 
+  // The filter panel: one row of chips per group, built once; the chips are refreshed by renderChips.
+  const groupRows = new Map();
+  function buildFilterGroups() {
+    for (const group of FILTER_GROUPS) {
+      const chips = el('div', { class: 'chips', role: 'group', 'aria-label': group.label });
+      els.filterGroups.append(el('fieldset', { class: 'filter-group' },
+        el('legend', {}, group.label),
+        chips,
+        group.hint ? el('small', { class: 'hint' }, group.hint) : null));
+      groupRows.set(group.key, chips);
+    }
+  }
+
+  function renderChips(counts) {
+    for (const group of FILTER_GROUPS) {
+      groupRows.get(group.key).replaceChildren(...buildChips(group, counts?.get(group.key)));
+    }
+    els.quickMistakes.replaceChildren(...buildChips(GROUP_BY_KEY.mistakes, counts?.get('mistakes')));
+    els.quickJlpt.replaceChildren(...buildChips(GROUP_BY_KEY.jlpt, counts?.get('jlpt')));
+  }
+
+  // Applies every filter and computes, for each chip, how many items the list would show with it:
+  // the count uses all the other groups, so chips of one group add up as the counts suggest.
   function applyFilters({ keepPage = false } = {}) {
     const now = Date.now();
-    const progress = els.progress.value;
-    const mistakes = els.mistakes.value;
-    const japanese = japaneseFilters();
-    const forProgress = state.items.filter((item) => matchesProgress(item, progress, now));
-    // Each row of quick buttons counts items within every other filter.
-    const forMistakes = forProgress.filter((item) => matchesJapanese(item, japanese));
-    const forJlpt = forProgress.filter((item) => matchesMistakes(item, mistakes, now)
-      && matchesJapanese(item, { ...japanese, jlpt: 'any' }));
-    state.view = forMistakes.filter((item) => matchesMistakes(item, mistakes, now));
+    const min = Number(els.levelMin.value);
+    const max = Number(els.levelMax.value);
+    const active = FILTER_GROUPS.filter((g) => state.filters[g.key].size > 0);
+    const inLevels = state.items.filter((item) => item.level >= min && item.level <= max);
+    // For each item, the active groups it fails.
+    const failed = inLevels.map((item) => active.filter((g) => !matchesGroup(item, g, state.filters[g.key], now)));
+    state.view = inLevels.filter((_, i) => failed[i].length === 0);
     if (!keepPage) state.page = 0;
-    renderChips(els.quickFilters, els.mistakes, MISTAKE_VALUES, QUICK_LABEL,
-      (value) => countMatching(forMistakes, (item) => matchesMistakes(item, value, now)));
-    renderChips(els.quickJlpt, els.jlpt, JLPT_QUICK, JLPT_QUICK_LABEL,
-      (value) => countMatching(forJlpt, (item) => matchesJapanese(item, { ...japanese, jlpt: value })));
+
+    const counts = new Map();
+    for (const group of FILTER_GROUPS) {
+      // Items that pass every group except possibly this one.
+      const candidates = inLevels.filter((_, i) => failed[i].length === 0 || (failed[i].length === 1 && failed[i][0] === group));
+      const groupCounts = new Map();
+      for (const [value] of group.options) {
+        const one = new Set([value]);
+        groupCounts.set(value, candidates.reduce((n, item) => n + (matchesGroup(item, group, one, now) ? 1 : 0), 0));
+      }
+      counts.set(group.key, groupCounts);
+    }
+    renderChips(counts);
     updateFiltersSummary();
     renderList();
   }
@@ -846,25 +897,12 @@
 
   // ---------- Loading ----------
   async function load() {
-    const types = selectedTypes();
-    if (types.length === 0) {
-      setMessage('Select at least one type.', true);
-      return;
-    }
-    const min = Number(els.levelMin.value);
-    const max = Number(els.levelMax.value);
-    if (min > max) {
-      setMessage('The minimum level must be lower than or equal to the maximum level.', true);
-      return;
-    }
-
     const token = getToken();
     if (!token) {
       showLogin();
       return;
     }
 
-    savePrefs();
     setBusy(true);
     // 1. Show the list at once from what is already known (memory or local cache).
     let shown = false;
@@ -904,7 +942,6 @@
         els.filtersPanel.open = false;
       }
       const notes = [];
-      if (!state.items.length) notes.push('No items for these filters.');
       if (!japanese) notes.push('The JLPT, frequency and grade data could not be loaded: those filters match nothing.');
       setMessage(notes.join(' '), !japanese);
     } catch (err) {
@@ -958,34 +995,35 @@
     showLogin();
   });
 
+  // The button only refreshes from WaniKani: every filter applies as soon as it changes.
   els.filtersForm.addEventListener('submit', (e) => {
     e.preventDefault();
     load();
   });
 
-  els.levelMin.addEventListener('change', () => {
-    if (Number(els.levelMin.value) > Number(els.levelMax.value)) {
-      els.levelMax.value = els.levelMin.value;
+  const onFiltersChanged = () => {
+    savePrefs();
+    if (state.raw) applyFilters();
+    else {
+      renderChips(null);
+      updateFiltersSummary();
     }
+  };
+
+  els.levelMin.addEventListener('change', () => {
+    if (Number(els.levelMin.value) > Number(els.levelMax.value)) els.levelMax.value = els.levelMin.value;
+    onFiltersChanged();
   });
 
   els.levelMax.addEventListener('change', () => {
-    if (Number(els.levelMax.value) < Number(els.levelMin.value)) {
-      els.levelMin.value = els.levelMax.value;
-    }
+    if (Number(els.levelMax.value) < Number(els.levelMin.value)) els.levelMin.value = els.levelMax.value;
+    onFiltersChanged();
   });
 
-  for (const select of [els.progress, els.mistakes, els.jlpt, els.frequency, els.grade, els.pos]) {
-    select.addEventListener('change', () => {
-      savePrefs();
-      if (state.raw) applyFilters();
-      else updateFiltersSummary();
-    });
-  }
-
-  for (const input of [els.levelMin, els.levelMax, ...els.filtersForm.querySelectorAll('input[name="types"]')]) {
-    input.addEventListener('change', updateFiltersSummary);
-  }
+  els.clearFilters.addEventListener('click', () => {
+    state.filters = emptyFilters();
+    onFiltersChanged();
+  });
 
   els.autoplay.addEventListener('change', savePrefs);
 
@@ -1014,7 +1052,9 @@
     storageRemove(OLD_STORAGE_STATS);
     applyTheme(currentTheme());
     populateLevels();
+    buildFilterGroups();
     restorePrefs();
+    renderChips(null);
     updateFiltersSummary();
     if (getToken()) {
       showApp();

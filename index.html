@@ -52,14 +52,9 @@
           <span id="filters-summary" class="summary-text"></span>
         </summary>
       <form id="filters-form" class="filters">
-        <fieldset class="types">
-          <legend>Types</legend>
-          <label class="chip type-radical"><input type="checkbox" name="types" value="radical" checked> Radicals</label>
-          <label class="chip type-kanji"><input type="checkbox" name="types" value="kanji" checked> Kanji</label>
-          <label class="chip type-vocabulary"><input type="checkbox" name="types" value="vocabulary" checked> Vocabulary</label>
-        </fieldset>
+        <p class="hint">Selected chips of one group add up (N5 + N4); groups combine (N5 + N4 that you missed this week). No chip selected means no constraint. Every filter applies at once; the number on a chip is how many items it matches with the other filters.</p>
 
-        <div class="row">
+        <div class="row row-keep">
           <label>Min level
             <select id="level-min"></select>
           </label>
@@ -68,102 +63,14 @@
           </label>
         </div>
 
-        <label>Progress
-          <select id="progress">
-            <option value="all">All items</option>
-            <option value="not-started">Not started yet</option>
-            <option value="started">Started (in SRS)</option>
-            <option value="review">Reviews available now</option>
-            <option value="burned">Burned</option>
-          </select>
-        </label>
-
-        <label>Mistakes
-          <select id="mistakes">
-            <option value="any">Any</option>
-            <option value="missed-24h">Missed in the last 24 h</option>
-            <option value="missed-48h">Missed in the last 48 h</option>
-            <option value="missed-7d">Missed in the last 7 days</option>
-            <option value="leech">Leeches (10+ misses, under 80% correct)</option>
-            <option value="never">Never missed</option>
-          </select>
-          <small class="hint">A miss is counted when the last review of an item had a wrong answer and happened within the period. A miss followed by a correct review in the same period is not shown.</small>
-        </label>
-
-        <fieldset class="jp-filters">
-          <legend>Japanese level</legend>
-          <div class="row row-keep">
-            <label>JLPT
-              <select id="jlpt">
-                <option value="any">Any</option>
-                <option value="5">N5</option>
-                <option value="4">N4</option>
-                <option value="3">N3</option>
-                <option value="2">N2</option>
-                <option value="1">N1</option>
-                <option value="upto4">N5 + N4</option>
-                <option value="upto3">N5 to N3</option>
-                <option value="upto2">N5 to N2</option>
-                <option value="none">Not in JLPT lists</option>
-              </select>
-            </label>
-            <label>Frequency
-              <select id="frequency">
-                <option value="any">Any</option>
-                <option value="500">Top 500</option>
-                <option value="1000">Top 1,000</option>
-                <option value="2500">Top 2,500</option>
-                <option value="5000">Top 5,000</option>
-                <option value="10000">Top 10,000</option>
-                <option value="rare">Less common</option>
-              </select>
-            </label>
-            <label>School grade
-              <select id="grade">
-                <option value="any">Any</option>
-                <option value="1">Grade 1</option>
-                <option value="2">Grade 2</option>
-                <option value="3">Grade 3</option>
-                <option value="4">Grade 4</option>
-                <option value="5">Grade 5</option>
-                <option value="6">Grade 6</option>
-                <option value="8">Secondary school</option>
-                <option value="9">Jinmeiyō (names)</option>
-                <option value="none">Not jōyō</option>
-              </select>
-            </label>
-            <label>Word type
-              <select id="pos">
-                <option value="any">Any</option>
-                <option value="noun">Nouns</option>
-                <option value="verb">Verbs</option>
-                <option value="godan">Godan verbs</option>
-                <option value="ichidan">Ichidan verbs</option>
-                <option value="suru">する verbs</option>
-                <option value="transitive">Transitive verbs</option>
-                <option value="intransitive">Intransitive verbs</option>
-                <option value="i-adj">い adjectives</option>
-                <option value="na-adj">な adjectives</option>
-                <option value="no-adj">の adjectives</option>
-                <option value="adverb">Adverbs</option>
-                <option value="expression">Expressions</option>
-                <option value="counter">Counters and numerals</option>
-                <option value="affix">Prefixes and suffixes</option>
-              </select>
-            </label>
-          </div>
-          <small class="hint">
-            Setting any of these leaves radicals out. JLPT: Jonathan Waller’s unofficial lists. Frequency: newspaper rank (kanji) or
-            JMdict band (words). Grade: school year a kanji is taught in; for a word, its hardest kanji.
-          </small>
-        </fieldset>
+        <div id="filter-groups" class="filter-groups"></div>
 
         <label class="check">
           <input id="autoplay" type="checkbox" checked>
           Autoplay vocabulary audio when revealed
         </label>
 
-        <button type="submit" class="primary">Load list</button>
+        <button type="submit" class="primary">Refresh from WaniKani</button>
       </form>
       </details>
     </section>
@@ -181,8 +88,9 @@
           <button id="hide-all" type="button">Hide all</button>
         </div>
       </div>
-      <div id="quick-filters" class="quick-filters" role="group" aria-label="Quick mistake filters"></div>
+      <div id="quick-mistakes" class="quick-filters" role="group" aria-label="Quick mistake filters"></div>
       <div id="quick-jlpt" class="quick-filters" role="group" aria-label="Quick JLPT filters"></div>
+      <button id="clear-filters" class="ghost clear-filters" type="button" hidden>Clear all filters</button>
       <ol id="list" class="list"></ol>
       <nav id="pager" class="pager" aria-label="Pages" hidden>
         <button id="prev-page" type="button">← Previous</button>
