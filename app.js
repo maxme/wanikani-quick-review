@@ -33,6 +33,34 @@
   const MISTAKE_VALUES = ['any', 'missed-24h', 'missed-48h', 'missed-7d', 'leech', 'never'];
   // Values used by earlier versions, mapped to the current ones when preferences are restored.
   const OLD_MISTAKE_VALUES = { 'since-last-visit': 'any' };
+  // Filters from data/japanese.json (JLPT, frequency, school grade) and from WaniKani parts of speech.
+  const JLPT_VALUES = ['any', '5', '4', '3', '2', '1', 'none'];
+  const FREQUENCY_VALUES = ['any', '500', '1000', '2500', '5000', '10000', 'rare'];
+  const GRADE_VALUES = ['any', '1', '2', '3', '4', '5', '6', '8', '9', 'none'];
+  // Grade scale: 1-6 elementary school, 8 secondary school, 9-10 jinmeiyo (names), NOT_JOYO otherwise.
+  const NOT_JOYO = 11;
+  // JMdict frequency bands hold 500 words each.
+  const FREQUENCY_BAND = 500;
+  const RARE_FROM = 10000;
+  const POS_GROUPS = {
+    noun: ['noun', 'proper noun', 'pronoun', 'independent noun', 'verbal noun'],
+    verb: ['godan verb', 'ichidan verb', 'する verb', 'transitive verb', 'intransitive verb'],
+    godan: ['godan verb'],
+    ichidan: ['ichidan verb'],
+    suru: ['する verb'],
+    transitive: ['transitive verb'],
+    intransitive: ['intransitive verb'],
+    'i-adj': ['い adjective'],
+    'na-adj': ['な adjective'],
+    'no-adj': ['の adjective'],
+    adverb: ['adverb'],
+    expression: ['expression'],
+    counter: ['counter', 'numeral'],
+    affix: ['prefix', 'suffix'],
+  };
+  const POS_VALUES = ['any', ...Object.keys(POS_GROUPS)];
+  const JAPANESE_DATA_URL = 'data/japanese.json';
+  const HAN = /\p{Script=Han}/u;
   const THEME_LABEL = { auto: 'auto', light: 'light', dark: 'dark' };
   const THEME_NEXT = { auto: 'light', light: 'dark', dark: 'auto' };
 
@@ -48,6 +76,10 @@
     levelMax: $('#level-max'),
     progress: $('#progress'),
     mistakes: $('#mistakes'),
+    jlpt: $('#jlpt'),
+    frequency: $('#frequency'),
+    grade: $('#grade'),
+    pos: $('#pos'),
     autoplay: $('#autoplay'),
     results: $('#results'),
     count: $('#count'),
@@ -97,6 +129,10 @@
       levelMax: Number(els.levelMax.value),
       progress: els.progress.value,
       mistakes: els.mistakes.value,
+      jlpt: els.jlpt.value,
+      frequency: els.frequency.value,
+      grade: els.grade.value,
+      pos: els.pos.value,
       autoplay: els.autoplay.checked,
     }));
   }
@@ -187,6 +223,13 @@
     if (PROGRESS_VALUES.includes(progress)) els.progress.value = progress;
     const mistakes = OLD_MISTAKE_VALUES[prefs.mistakes] ?? prefs.mistakes;
     if (MISTAKE_VALUES.includes(mistakes)) els.mistakes.value = mistakes;
+    const restoreSelect = (select, values, value) => {
+      if (values.includes(value)) select.value = value;
+    };
+    restoreSelect(els.jlpt, JLPT_VALUES, prefs.jlpt);
+    restoreSelect(els.frequency, FREQUENCY_VALUES, prefs.frequency);
+    restoreSelect(els.grade, GRADE_VALUES, prefs.grade);
+    restoreSelect(els.pos, POS_VALUES, prefs.pos);
     if (typeof prefs.autoplay === 'boolean') els.autoplay.checked = prefs.autoplay;
   }
 
@@ -278,6 +321,40 @@
     return [...byVoice.values()];
   }
 
+  // ---------- Japanese data (JLPT, frequency, school grade) ----------
+  // Static file built by scripts/build_japanese_data.py; the browser caches it. Loaded once per page.
+  let japaneseData = null;
+  function loadJapaneseData() {
+    japaneseData ??= fetch(JAPANESE_DATA_URL)
+      .then((res) => (res.ok ? res.json() : null))
+      .catch(() => null);
+    return japaneseData;
+  }
+
+  const stripTilde = (text) => text.replace(/^[〜～]+|[〜～]+$/g, '');
+
+  // Grade on a single scale where higher is harder; jinmeiyo (9, 10) is grouped as 9.
+  function kanjiGrade(jp, char) {
+    const grade = jp.kanji[char]?.[1] ?? 0;
+    if (grade === 0) return NOT_JOYO;
+    return grade >= 9 ? 9 : grade;
+  }
+
+  // JLPT level, frequency rank and grade of a subject. null = unknown or not applicable.
+  function japaneseInfo(jp, type, characters) {
+    const none = { jlpt: null, frequency: null, grade: null };
+    if (!jp || !characters || type === 'radical') return none;
+    if (type === 'kanji') {
+      const [jlpt = 0, , frequency = 0] = jp.kanji[characters] ?? [];
+      return { jlpt: jlpt || null, frequency: frequency || null, grade: kanjiGrade(jp, characters) };
+    }
+    const [jlpt = 0, band = 0] = jp.words[stripTilde(characters)] ?? [];
+    // A word's grade is the grade of its hardest kanji; kana-only words have none.
+    const kanji = [...characters].filter((c) => HAN.test(c));
+    const grade = kanji.length ? Math.max(...kanji.map((c) => kanjiGrade(jp, c))) : null;
+    return { jlpt: jlpt || null, frequency: band ? band * FREQUENCY_BAND : null, grade };
+  }
+
   // ---------- Review history ----------
   // GET /reviews is deprecated and returns nothing, so review_statistics is the source of history.
   // Recent misses are deduced from it:
@@ -343,11 +420,15 @@
     return h.wrong >= LEECH_MIN_MISTAKES && h.percentCorrect !== null && h.percentCorrect < LEECH_MAX_PERCENT;
   }
 
-  function toItem(subject, assignment, history) {
+  function toItem(subject, assignment, history, jp) {
     const d = subject.data;
-    const type = subject.object;
+    // Kana-only vocabulary is a separate subject type in the API; it is shown as vocabulary.
+    const kana = subject.object === 'kana_vocabulary';
+    const type = kana ? 'vocabulary' : subject.object;
     const h = history ?? NO_HISTORY;
     return {
+      ...japaneseInfo(jp, type, d.characters),
+      partsOfSpeech: d.parts_of_speech ?? [],
       id: subject.id,
       type,
       level: d.level,
@@ -355,7 +436,10 @@
       glyph: d.characters ?? null,
       image: d.characters ? null : pickImage(d.character_images),
       meanings: normalizeMeanings(d.meanings),
-      readings: type === 'radical' ? [] : normalizeReadings(d.readings),
+      // Kana vocabulary has no readings: its characters are the reading.
+      readings: type === 'radical' ? []
+        : kana ? [{ label: '', items: [{ text: d.characters, primary: true }] }]
+          : normalizeReadings(d.readings),
       audios: type === 'vocabulary' ? normalizeAudios(d.pronunciation_audios) : [],
       srsStage: assignment?.srs_stage ?? 0,
       availableAt: assignment?.available_at ?? null,
@@ -371,10 +455,10 @@
   }
 
   function buildItems() {
-    const { subjects, assignments } = state.raw;
+    const { subjects, assignments, japanese } = state.raw;
     const bySubject = new Map(assignments.map((a) => [a.data.subject_id, a.data]));
     return subjects
-      .map((s) => toItem(s, bySubject.get(s.id), state.stats.get(s.id) ?? null))
+      .map((s) => toItem(s, bySubject.get(s.id), state.stats.get(s.id) ?? null, japanese))
       .sort(compareItems);
   }
 
@@ -407,6 +491,26 @@
       case 'never': return h.answered > 0 && h.wrong === 0;
       default: return true;
     }
+  }
+
+  // JLPT, frequency, grade and word type. Any value other than "any" leaves radicals out.
+  function matchesJapanese(item, f) {
+    if (item.type === 'radical' && (f.jlpt !== 'any' || f.frequency !== 'any' || f.grade !== 'any' || f.pos !== 'any')) {
+      return false;
+    }
+    if (f.jlpt === 'none' ? item.jlpt !== null : f.jlpt !== 'any' && item.jlpt !== Number(f.jlpt)) return false;
+    if (f.frequency === 'rare') {
+      if (item.frequency !== null && item.frequency <= RARE_FROM) return false;
+    } else if (f.frequency !== 'any' && !(item.frequency !== null && item.frequency <= Number(f.frequency))) {
+      return false;
+    }
+    if (f.grade !== 'any' && item.grade !== (f.grade === 'none' ? NOT_JOYO : Number(f.grade))) return false;
+    if (f.pos !== 'any' && !item.partsOfSpeech.some((p) => POS_GROUPS[f.pos].includes(p))) return false;
+    return true;
+  }
+
+  function japaneseFilters() {
+    return { jlpt: els.jlpt.value, frequency: els.frequency.value, grade: els.grade.value, pos: els.pos.value };
   }
 
   // ---------- Card rendering ----------
@@ -499,6 +603,7 @@
           el('div', { class: 'tags' },
             el('span', { class: 'tag tag-type' }, TYPE_TAG[item.type]),
             el('span', { class: 'tag' }, `Lvl ${item.level}`),
+            item.jlpt ? el('span', { class: 'tag jlpt', title: `JLPT N${item.jlpt}` }, `N${item.jlpt}`) : null,
             srs ? el('span', { class: 'tag' }, srs) : null,
             item.leech ? el('span', { class: 'tag leech' }, 'Leech') : null,
             wrong > 0 ? el('span', { class: 'tag', title: `${wrong} miss${wrong > 1 ? 'es' : ''} in total` }, `✗ ${wrong}`) : null),
@@ -580,7 +685,11 @@
       ? `Level ${els.levelMin.value}`
       : `Levels ${els.levelMin.value}–${els.levelMax.value}`;
     const progress = els.progress.selectedOptions[0]?.textContent ?? '';
-    els.filtersSummary.textContent = `${types} · ${levels} · ${progress}`;
+    // Japanese level filters are listed only when set.
+    const extra = [els.jlpt, els.frequency, els.grade, els.pos]
+      .filter((select) => select.value !== 'any')
+      .map((select) => (select === els.jlpt && select.value !== 'none' ? `JLPT ${select.selectedOptions[0].textContent}` : select.selectedOptions[0].textContent));
+    els.filtersSummary.textContent = [types, levels, progress, ...extra].join(' · ');
   }
 
   function updateRevealedCount() {
@@ -589,10 +698,10 @@
   }
 
   // Quick buttons for the mistake filter, each with the number of items it would show.
-  function renderQuickFilters(itemsForProgress, now) {
+  function renderQuickFilters(baseItems, now) {
     const current = els.mistakes.value;
     els.quickFilters.replaceChildren(...MISTAKE_VALUES.map((value) => {
-      const count = itemsForProgress.reduce((n, item) => n + (matchesMistakes(item, value, now) ? 1 : 0), 0);
+      const count = baseItems.reduce((n, item) => n + (matchesMistakes(item, value, now) ? 1 : 0), 0);
       const button = el('button', {
         type: 'button',
         class: value === current ? 'quick active' : 'quick',
@@ -610,10 +719,12 @@
     const now = Date.now();
     const progress = els.progress.value;
     const mistakes = els.mistakes.value;
-    const forProgress = state.items.filter((item) => matchesProgress(item, progress, now));
-    state.view = forProgress.filter((item) => matchesMistakes(item, mistakes, now));
+    const japanese = japaneseFilters();
+    // The quick mistake buttons count items within every other filter.
+    const base = state.items.filter((item) => matchesProgress(item, progress, now) && matchesJapanese(item, japanese));
+    state.view = base.filter((item) => matchesMistakes(item, mistakes, now));
     state.page = 0;
-    renderQuickFilters(forProgress, now);
+    renderQuickFilters(base, now);
     updateFiltersSummary();
     renderList();
   }
@@ -661,18 +772,24 @@
     setMessage('Loading from WaniKani…');
     try {
       const levels = levelRange(min, max).join(',');
-      const [subjects, assignments, cache] = await Promise.all([
-        fetchAll(`${API_BASE}/subjects?${new URLSearchParams({ types: types.join(','), levels, hidden: 'false' })}`, token),
-        fetchAll(`${API_BASE}/assignments?${new URLSearchParams({ subject_types: types.join(','), levels })}`, token),
+      // Kana-only vocabulary is its own subject type in the API.
+      const apiTypes = types.flatMap((t) => (t === 'vocabulary' ? ['vocabulary', 'kana_vocabulary'] : [t])).join(',');
+      const [subjects, assignments, cache, japanese] = await Promise.all([
+        fetchAll(`${API_BASE}/subjects?${new URLSearchParams({ types: apiTypes, levels, hidden: 'false' })}`, token),
+        fetchAll(`${API_BASE}/assignments?${new URLSearchParams({ subject_types: apiTypes, levels })}`, token),
         syncStats(token),
+        loadJapaneseData(),
       ]);
-      state.raw = { subjects, assignments };
+      state.raw = { subjects, assignments, japanese };
       state.stats = buildStatsMap(cache);
       state.items = buildItems();
       applyFilters();
       // Collapse the filters once the list is there, so the cards start near the top of the screen.
       els.filtersPanel.open = false;
-      setMessage(state.items.length ? '' : 'No items for these filters.');
+      const notes = [];
+      if (!state.items.length) notes.push('No items for these filters.');
+      if (!japanese) notes.push('The JLPT, frequency and grade data could not be loaded: those filters match nothing.');
+      setMessage(notes.join(' '), !japanese);
     } catch (err) {
       setMessage(err.message || 'Unknown error.', true);
     } finally {
@@ -739,7 +856,7 @@
     }
   });
 
-  for (const select of [els.progress, els.mistakes]) {
+  for (const select of [els.progress, els.mistakes, els.jlpt, els.frequency, els.grade, els.pos]) {
     select.addEventListener('change', () => {
       savePrefs();
       if (state.raw) applyFilters();

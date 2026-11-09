@@ -589,3 +589,8 @@ button:disabled { opacity: 0.5; cursor: progress; }
   .meanings { font-size: 1rem; }
   .row { grid-template-columns: 1fr; }
 }
+
+/* Japanese level filters: two columns even on phones (the selects are short). */
+.jp-filters { display: grid; gap: 0.5rem; }
+.jp-filters .row-keep { grid-template-columns: 1fr 1fr; }
+.tag.jlpt { font-weight: 600; }

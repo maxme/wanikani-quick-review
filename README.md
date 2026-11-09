@@ -8,10 +8,11 @@ Each item shows its Japanese text on the left. The **meaning** and **reading** s
 - **Sign in**: paste your WaniKani API token (*Settings → API Tokens*). A read-only token is enough.
 - **Storage**: the token is kept in your browser's `localStorage`. It is never written into the code and only sent to `api.wanikani.com`. *Change token* clears it.
 - **Filters**
-  - Types: radicals, kanji, vocabulary. Radicals show meaning only (no reading).
+  - Types: radicals, kanji, vocabulary (including kana-only vocabulary). Radicals show meaning only (no reading).
   - Level range.
   - Progress: all, not started, started, reviews available now, burned.
   - Mistakes: any, missed in the last 24 h / 48 h / 7 days, leeches, never missed.
+  - Japanese level (radicals are left out when one is set): JLPT N5–N1, frequency, school grade, word type. See below.
 - **Pages**: 100 items per page, with previous/next navigation.
 - **Audio (vocabulary only)**: revealing a vocabulary card plays its pronunciation automatically (toggle *Autoplay vocabulary audio when revealed*). *▶ Play* replays it, and *⇄ Other voice* switches voice actor when WaniKani provides more than one. Audio is only played on a click, never when the list is re-rendered, and clicking the audio buttons does not hide the card.
 - **Actions**: *Shuffle*, *Show all*, *Hide all* (applies to the whole filtered list).
@@ -33,6 +34,28 @@ Recent misses are deduced from `review_statistics`, synced incrementally with `u
 
 The statistics cache is stored in the browser and cleared on *Change token*.
 
+
+## Japanese level filters
+
+WaniKani does not provide JLPT levels or frequency, so they come from `data/japanese.json`, a static file built by
+`scripts/build_japanese_data.py` from open data:
+
+| Filter | Kanji | Vocabulary |
+| --- | --- | --- |
+| JLPT | [kanji-data](https://github.com/davidluzgouveia/kanji-data) (MIT), from Jonathan Waller's lists | [open-anki-jlpt-decks](https://github.com/jamsinclair/open-anki-jlpt-decks), from Jonathan Waller's lists |
+| Frequency | Newspaper rank from KANJIDIC (top 2,500 kanji) | JMdict newspaper frequency bands (`nf01`–`nf48`, 500 words each) |
+| School grade | KANJIDIC grade: 1–6, secondary school, jinmeiyō | Grade of the word's hardest kanji |
+| Word type | – | WaniKani parts of speech |
+
+The JLPT has published no official lists since 2010; Jonathan Waller's lists (tanos.co.uk) are the usual reference.
+A word matches only when its WaniKani spelling is in the source, so some words have no JLPT level or frequency.
+KANJIDIC and JMdict are © EDRDG, used under CC BY-SA 4.0.
+
+To rebuild the file (the token is read from the environment and only sent to `api.wanikani.com`):
+
+```bash
+WANIKANI_TOKEN=your-token python3 scripts/build_japanese_data.py
+```
 
 ## Run locally
 
