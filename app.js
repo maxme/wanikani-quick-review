@@ -4,7 +4,7 @@
   const API_BASE = 'https://api.wanikani.com/v2';
   const REVISION = '20170710';
   const LEVEL_MAX = 60;
-  const PAGE_SIZE = 100;
+  const PAGE_SIZE = 1000;
   const HOUR = 60 * 60 * 1000;
 
   // Leech: at least LEECH_MIN_MISTAKES wrong answers and an overall correct rate below LEECH_MAX_PERCENT.

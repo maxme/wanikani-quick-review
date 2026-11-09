@@ -19,7 +19,7 @@ Each item shows its Japanese text on the left. The **meaning** and **reading** s
 - **Cache**: subjects and assignments of every level are kept in the browser (IndexedDB). After the first load, the list
   is shown at once from the cache, and only records changed since the last visit are requested (`updated_after`), so a
   visit usually costs three small API requests. Changing the type or level range needs no request. *Change token* clears it.
-- **Pages**: 100 items per page, with previous/next navigation.
+- **Pages**: 1,000 items per page, with previous/next navigation.
 - **Audio (vocabulary only)**: revealing a vocabulary card plays its pronunciation automatically (toggle *Autoplay vocabulary audio when revealed*). *▶ Play* replays it, and *⇄ Other voice* switches voice actor when WaniKani provides more than one. Audio is only played on a click, never when the list is re-rendered, and clicking the audio buttons does not hide the card.
 - **Actions**: *Shuffle*, *Show all*, *Hide all* (applies to the whole filtered list).
 - **Theme**: auto (follows the system), light or dark.
