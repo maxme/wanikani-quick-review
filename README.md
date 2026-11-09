@@ -45,7 +45,7 @@ Recent misses are deduced from `review_statistics`, synced incrementally with `u
 - *Leech*: at least 10 wrong answers in total, and under 80% correct overall (thresholds at the top of `app.js`).
 - *Never missed*: at least one answer, and no wrong answer.
 
-The statistics cache is stored in the browser and cleared on *Change token*.
+The statistics cache is stored in the browser and cleared on *Sign out*.
 
 
 ## Japanese level filters
