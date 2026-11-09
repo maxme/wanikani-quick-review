@@ -19,6 +19,8 @@
   // v2: the cache entries now hold the last-review miss flag; older caches are dropped and fully re-synced.
   const STORAGE_STATS = 'wk-quick-review.stats.v2';
   const OLD_STORAGE_STATS = 'wk-quick-review.stats';
+  // A study paused in this browser (one at a time). Holds item ids and timings only.
+  const STORAGE_STUDY = 'wk-quick-review.study';
 
   const TYPE_LABEL = { radical: 'Radical', kanji: 'Kanji', vocabulary: 'Vocabulary' };
   const TYPE_ORDER = { radical: 0, kanji: 1, vocabulary: 2 };
@@ -209,6 +211,11 @@
     studyStage: $('#study-stage'),
     studyButtons: $('#study-buttons'),
     studyClose: $('#study-close'),
+    studyPause: $('#study-pause'),
+    resume: $('#study-resume'),
+    resumeText: $('#resume-text'),
+    resumeContinue: $('#resume-continue'),
+    resumeDiscard: $('#resume-discard'),
     message: $('#message'),
     theme: $('#theme'),
     filtersPanel: $('#filters-panel'),
@@ -1030,15 +1037,43 @@
   // Goes through a copy of the current list in its current order. The answers ("knew it" / "didn't know")
   // only live for the session: at the end, the missed cards can be studied again.
   // stopped: the session was left before the end; its results are shown for the cards answered so far.
-  const study = { items: [], index: 0, revealed: false, missed: [], knew: 0, stopped: false };
+  // answered: cards answered so far, over all the sittings of a paused study (knew + missed.length).
+  // size: cards in the study (answered + still to come). all: the full list, to start again (null after a resume).
+  // activeMs: time of the answered cards. cardMs / cardStart: the clock of the card on screen.
+  const study = { items: [], index: 0, revealed: false, missed: [], knew: 0, answered: 0, stopped: false, size: 0, all: null, activeMs: 0, cardMs: 0, cardStart: null };
   const studyDone = () => study.stopped || study.index >= study.items.length;
+
+  // The clock runs only while a card is on screen and the tab is visible.
+  function clockStart() {
+    if (study.cardStart === null && !studyDone() && !els.studyView.hidden && !document.hidden) study.cardStart = performance.now();
+  }
+  function clockStop() {
+    if (study.cardStart !== null) {
+      study.cardMs += performance.now() - study.cardStart;
+      study.cardStart = null;
+    }
+  }
+  // A card left without an answer (pause, stop, close) is not counted: it comes back later.
+  function clockDiscard() {
+    clockStop();
+    study.cardMs = 0;
+  }
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) clockStop();
+    else clockStart();
+  });
 
   function startStudy(items) {
     if (!items.length) return;
-    Object.assign(study, { items: [...items], index: 0, revealed: false, missed: [], knew: 0, stopped: false });
+    Object.assign(study, { items: [...items], all: [...items], index: 0, revealed: false, missed: [], knew: 0, answered: 0, stopped: false, size: items.length, activeMs: 0, cardMs: 0, cardStart: null });
+    showStudyView();
+  }
+
+  function showStudyView() {
     els.studyView.hidden = false;
     document.body.classList.add('studying');
     renderStudy();
+    clockStart();
     // Keys go to the study view, not to the list behind it.
     els.studyView.focus();
   }
@@ -1046,6 +1081,7 @@
   // ✕ or Esc during a session: show the results so far if any card was answered; on the results, close.
   function leaveStudy() {
     if (!studyDone() && study.index > 0) {
+      clockDiscard();
       study.stopped = true;
       renderStudy();
       els.studyView.focus();
@@ -1055,9 +1091,92 @@
   }
 
   function closeStudy() {
+    clockDiscard();
     els.studyView.hidden = true;
     document.body.classList.remove('studying');
     els.study.focus();
+  }
+
+  // ---------- Paused study: saved in this browser, one at a time ----------
+  // Only ids and counters are stored: the cards come from the list as it is when the study is resumed.
+  function readPausedStudy() {
+    try {
+      const saved = JSON.parse(storageGet(STORAGE_STUDY) || 'null');
+      return saved?.version === 1 && Array.isArray(saved.remaining) ? saved : null;
+    } catch { return null; }
+  }
+
+  function pauseStudy() {
+    if (study.index >= study.items.length) return;
+    clockDiscard();
+    storageSet(STORAGE_STUDY, JSON.stringify({
+      version: 1,
+      savedAt: Date.now(),
+      size: study.size,
+      answered: study.answered,
+      knew: study.knew,
+      activeMs: study.activeMs,
+      missed: study.missed.map((item) => item.id),
+      remaining: study.items.slice(study.index).map((item) => item.id),
+    }));
+    closeStudy();
+    renderResume();
+    if (!readPausedStudy()) setMessage('The study could not be saved: browser storage is unavailable.', true);
+  }
+
+  function resumePausedStudy() {
+    const saved = readPausedStudy();
+    if (!saved) return;
+    const byId = new Map(state.items.map((item) => [item.id, item]));
+    const remaining = saved.remaining.map((id) => byId.get(id)).filter(Boolean);
+    const missed = saved.missed.map((id) => byId.get(id)).filter(Boolean);
+    storageRemove(STORAGE_STUDY);
+    renderResume();
+    if (!remaining.length) {
+      setMessage('The paused study has no cards left.');
+      return;
+    }
+    Object.assign(study, { items: remaining, all: null, index: 0, revealed: false, missed, knew: saved.knew, answered: saved.answered, stopped: false, size: saved.answered + remaining.length, activeMs: saved.activeMs, cardMs: 0, cardStart: null });
+    showStudyView();
+  }
+
+  function discardPausedStudy() {
+    storageRemove(STORAGE_STUDY);
+    renderResume();
+  }
+
+  // Shows the paused study above the list, with what is left and the projected time at its pace.
+  function renderResume() {
+    const saved = readPausedStudy();
+    els.resume.hidden = !saved;
+    if (!saved) return;
+    const left = saved.remaining.length;
+    const pace = saved.answered ? projectionText(saved.activeMs, saved.answered, left) : '';
+    els.resumeText.textContent = `Study paused: ${saved.answered} of ${saved.size} cards done, ${left} left${pace ? ` (${pace})` : ''}.`;
+  }
+
+  // ---------- Time formatting and projection ----------
+  function formatDuration(ms) {
+    const total = Math.round(ms / 1000);
+    if (total < 60) return `${total} s`;
+    const minutes = Math.floor(total / 60);
+    if (minutes < 60) return `${minutes} min ${String(total % 60).padStart(2, '0')} s`;
+    return `${Math.floor(minutes / 60)} h ${String(minutes % 60).padStart(2, '0')} min`;
+  }
+
+  // Average per card: one decimal under 10 seconds, where a whole second would hide the difference.
+  function formatAverage(ms) {
+    return ms < 10000 ? `${(ms / 1000).toFixed(1)} s` : formatDuration(ms);
+  }
+
+  // The projection applies the average time per answered card to the cards left.
+  function projectionText(activeMs, answered, left) {
+    if (!answered || !left) return '';
+    return `about ${formatDuration((activeMs / answered) * left)} at this pace`;
+  }
+
+  function statBlock(value, label) {
+    return el('div', { class: 'stat' }, el('span', { class: 'stat-value' }, value), el('span', { class: 'stat-label' }, label));
   }
 
   function studyButton(label, key, onClick, cls = '') {
@@ -1067,26 +1186,34 @@
   }
 
   function renderStudy() {
-    const total = study.items.length;
-    els.studyBar.style.width = `${(100 * study.index) / total}%`;
+    els.studyBar.style.width = `${(100 * study.answered) / study.size}%`;
+    els.studyPause.hidden = studyDone();
     if (studyDone()) {
-      const answered = study.index;
+      const left = study.size - study.answered;
+      const average = study.answered ? study.activeMs / study.answered : 0;
       els.studyProgress.textContent = study.stopped
-        ? `Stopped after ${answered} of ${total} cards`
-        : `Done: ${total} card${total > 1 ? 's' : ''}`;
+        ? `Stopped after ${study.answered} of ${study.size} cards`
+        : `Done: ${study.size} card${study.size > 1 ? 's' : ''}`;
       els.studyStage.replaceChildren(el('div', { class: 'study-summary' },
-        el('div', { class: 'study-score' }, `${study.knew} / ${answered}`),
+        el('div', { class: 'study-score' }, `${study.knew} / ${study.answered}`),
         el('p', {}, study.missed.length ? `${study.missed.length} missed:` : 'You knew them all.'),
+        el('div', { class: 'study-stats' },
+          statBlock(formatDuration(study.activeMs), 'Total time'),
+          statBlock(study.answered ? formatAverage(average) : '–', 'Average per card'),
+          study.stopped && left > 0 && study.answered
+            ? statBlock(`≈ ${formatDuration(average * left)}`, `Projected for the ${left} cards left`)
+            : null),
         study.missed.length ? el('ol', { class: 'list study-missed' }, ...study.missed.map(buildMissedRow)) : null));
       const missed = [...study.missed];
       els.studyButtons.replaceChildren(
         missed.length ? studyButton(`Retry ${missed.length} missed`, 'Space', () => startStudy(missed), 'primary') : null,
-        studyButton('Start again', 'R', () => startStudy(study.items)),
+        study.stopped && left > 0 ? studyButton('Continue later', 'P', pauseStudy) : null,
+        study.all ? studyButton('Start again', 'R', () => startStudy(study.all)) : null,
         studyButton('Close', 'Esc', closeStudy));
       return;
     }
     const item = study.items[study.index];
-    els.studyProgress.textContent = `${study.index + 1} / ${total}`;
+    els.studyProgress.textContent = `${study.answered + 1} / ${study.size}`;
     const content = el('div', { class: 'answer-content' });
     const voice = () => state.voice.get(item.id) ?? 0;
     const renderAnswer = () => content.replaceChildren(...buildAnswer(item, voice(), {
@@ -1139,11 +1266,16 @@
 
   function answerStudy(knew) {
     const item = study.items[study.index];
+    clockStop();
+    study.activeMs += study.cardMs;
+    study.cardMs = 0;
+    study.answered += 1;
     if (knew) study.knew += 1;
     else study.missed.push(item);
     study.index += 1;
     study.revealed = false;
     renderStudy();
+    clockStart();
     els.studyView.focus();
   }
 
@@ -1153,8 +1285,9 @@
     if (e.key === 'Escape') leaveStudy();
     // Space/Enter on a focused study button presses that button.
     else if (e.target.closest?.('#study-view button') && (e.key === ' ' || e.key === 'Enter')) handled = false;
+    else if ((e.key === 'p' || e.key === 'P') && study.index < study.items.length) pauseStudy();
     else if (done && (e.key === ' ' || e.key === 'Enter') && study.missed.length) startStudy([...study.missed]);
-    else if (done && (e.key === 'r' || e.key === 'R')) startStudy(study.items);
+    else if (done && (e.key === 'r' || e.key === 'R') && study.all) startStudy(study.all);
     // Before the answer is shown, the answer keys (←/→, 1/2) also just show it; pressed again, they answer.
     else if (!done && !study.revealed && [' ', 'Enter', 'ArrowLeft', 'ArrowRight', '1', '2'].includes(e.key)) revealStudy();
     else if (!done && study.revealed && (e.key === '1' || e.key === 'ArrowLeft')) answerStudy(false);
@@ -1251,6 +1384,8 @@
     storageRemove(STORAGE_TOKEN);
     storageRemove(STORAGE_STATS);
     storageRemove(OLD_STORAGE_STATS);
+    storageRemove(STORAGE_STUDY);
+    renderResume();
     dbClear();
     state.raw = null;
     state.stats = new Map();
@@ -1347,6 +1482,9 @@
   });
   els.study.addEventListener('click', () => startStudy(state.view));
   els.studyClose.addEventListener('click', leaveStudy);
+  els.studyPause.addEventListener('click', pauseStudy);
+  els.resumeContinue.addEventListener('click', resumePausedStudy);
+  els.resumeDiscard.addEventListener('click', discardPausedStudy);
 
   // ---------- Keyboard ----------
   // Up/Down (or k/j) move between cards; Space/Enter on a card reveals it (handled on the card).
@@ -1380,6 +1518,7 @@
     restorePrefs();
     renderChips(null);
     updateFiltersSummary();
+    renderResume();
     if (getToken()) {
       showApp();
       load();
