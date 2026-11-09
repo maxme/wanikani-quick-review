@@ -13,6 +13,10 @@ Each item shows its Japanese text on the left. The **meaning** and **reading** s
   - Progress: all, not started, started, reviews available now, burned.
   - Mistakes: any, missed in the last 24 h / 48 h / 7 days, leeches, never missed.
   - Japanese level (radicals are left out when one is set): JLPT N5–N1, frequency, school grade, word type. See below.
+  - Quick buttons above the list for mistakes and JLPT (N5, N4, … N1, N5 + N4, N5 – N3, N5 – N2), each with its item count.
+- **Cache**: subjects and assignments of every level are kept in the browser (IndexedDB). After the first load, the list
+  is shown at once from the cache, and only records changed since the last visit are requested (`updated_after`), so a
+  visit usually costs three small API requests. Changing the type or level range needs no request. *Change token* clears it.
 - **Pages**: 100 items per page, with previous/next navigation.
 - **Audio (vocabulary only)**: revealing a vocabulary card plays its pronunciation automatically (toggle *Autoplay vocabulary audio when revealed*). *▶ Play* replays it, and *⇄ Other voice* switches voice actor when WaniKani provides more than one. Audio is only played on a click, never when the list is re-rendered, and clicking the audio buttons does not hide the card.
 - **Actions**: *Shuffle*, *Show all*, *Hide all* (applies to the whole filtered list).

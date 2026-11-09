@@ -34,7 +34,12 @@
   // Values used by earlier versions, mapped to the current ones when preferences are restored.
   const OLD_MISTAKE_VALUES = { 'since-last-visit': 'any' };
   // Filters from data/japanese.json (JLPT, frequency, school grade) and from WaniKani parts of speech.
-  const JLPT_VALUES = ['any', '5', '4', '3', '2', '1', 'none'];
+  // 'upto4' = N5 and N4, 'upto3' = N5 to N3, 'upto2' = N5 to N2.
+  const JLPT_VALUES = ['any', '5', '4', '3', '2', '1', 'upto4', 'upto3', 'upto2', 'none'];
+  const JLPT_QUICK = ['any', '5', '4', '3', '2', '1', 'upto4', 'upto3', 'upto2'];
+  const JLPT_QUICK_LABEL = {
+    any: 'All', 5: 'N5', 4: 'N4', 3: 'N3', 2: 'N2', 1: 'N1', upto4: 'N5 + N4', upto3: 'N5 – N3', upto2: 'N5 – N2',
+  };
   const FREQUENCY_VALUES = ['any', '500', '1000', '2500', '5000', '10000', 'rare'];
   const GRADE_VALUES = ['any', '1', '2', '3', '4', '5', '6', '8', '9', 'none'];
   // Grade scale: 1-6 elementary school, 8 secondary school, 9-10 jinmeiyo (names), NOT_JOYO otherwise.
@@ -77,6 +82,7 @@
     progress: $('#progress'),
     mistakes: $('#mistakes'),
     jlpt: $('#jlpt'),
+    quickJlpt: $('#quick-jlpt'),
     frequency: $('#frequency'),
     grade: $('#grade'),
     pos: $('#pos'),
@@ -273,12 +279,6 @@
     return items;
   }
 
-  function levelRange(min, max) {
-    const levels = [];
-    for (let n = min; n <= max; n++) levels.push(n);
-    return levels;
-  }
-
   // ---------- Data normalization ----------
   function pickImage(images = []) {
     const svg = images.find((i) => i.content_type === 'image/svg+xml');
@@ -319,6 +319,70 @@
       }
     }
     return [...byVoice.values()];
+  }
+
+  // ---------- Local cache of subjects and assignments (IndexedDB) ----------
+  // Subjects and assignments of every level are downloaded once, then only the records changed since the
+  // last sync are requested (updated_after). The list is shown from the cache at once and refreshed after.
+  // IndexedDB is used because the subjects are too large for localStorage. If it is unavailable
+  // (private browsing), everything still works, without the cache.
+  const DB_NAME = 'wk-quick-review';
+  const DB_STORE = 'cache';
+  // Bump when the compact format changes: older caches are then downloaded again.
+  const CACHE_VERSION = 1;
+  let dbPromise = null;
+
+  function openDb() {
+    dbPromise ??= new Promise((resolve) => {
+      try {
+        const req = indexedDB.open(DB_NAME, 1);
+        req.onupgradeneeded = () => req.result.createObjectStore(DB_STORE);
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => resolve(null);
+        req.onblocked = () => resolve(null);
+      } catch { resolve(null); }
+    });
+    return dbPromise;
+  }
+
+  // Runs one request on the store; resolves with its result, or null on any error.
+  async function dbRequest(mode, run) {
+    const db = await openDb();
+    if (!db) return null;
+    return new Promise((resolve) => {
+      try {
+        const tx = db.transaction(DB_STORE, mode);
+        const req = run(tx.objectStore(DB_STORE));
+        tx.oncomplete = () => resolve(req.result ?? null);
+        tx.onerror = () => resolve(null);
+        tx.onabort = () => resolve(null);
+      } catch { resolve(null); }
+    });
+  }
+
+  const dbGet = (key) => dbRequest('readonly', (store) => store.get(key));
+  const dbSet = (key, value) => dbRequest('readwrite', (store) => store.put(value, key));
+  const dbClear = () => dbRequest('readwrite', (store) => store.clear());
+
+  async function readCollection(key) {
+    const stored = await dbGet(key);
+    return stored?.version === CACHE_VERSION ? stored : null;
+  }
+
+  // Brings a cached collection up to date and returns { records, changed }.
+  async function syncCollection(key, url, token, compact, idOf, cached) {
+    const cache = cached ?? (await readCollection(key)) ?? { version: CACHE_VERSION, syncedAt: null, records: {} };
+    // Overlap of a few minutes, so no change made during the sync is lost.
+    const nextSync = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    const query = cache.syncedAt ? `${url.includes('?') ? '&' : '?'}${new URLSearchParams({ updated_after: cache.syncedAt })}` : '';
+    const changed = await fetchAll(url + query, token);
+    for (const raw of changed) cache.records[idOf(raw)] = compact(raw);
+    // Written only when something changed: the next sync then simply starts from the older date.
+    if (changed.length || !cache.syncedAt) {
+      cache.syncedAt = nextSync;
+      await dbSet(key, cache);
+    }
+    return { records: cache.records, changed: changed.length, cache };
   }
 
   // ---------- Japanese data (JLPT, frequency, school grade) ----------
@@ -405,6 +469,8 @@
     }
     cache.syncedAt = nextSync;
     saveStatsCache(cache);
+    // Not saved: only tells the caller whether anything changed.
+    cache.changed = changed.length;
     return cache;
   }
 
@@ -420,19 +486,18 @@
     return h.wrong >= LEECH_MIN_MISTAKES && h.percentCorrect !== null && h.percentCorrect < LEECH_MAX_PERCENT;
   }
 
-  function toItem(subject, assignment, history, jp) {
-    const d = subject.data;
+  // Compact copy of a subject, as kept in the local cache: only what the cards and filters use.
+  function compactSubject(raw) {
+    const d = raw.data;
     // Kana-only vocabulary is a separate subject type in the API; it is shown as vocabulary.
-    const kana = subject.object === 'kana_vocabulary';
-    const type = kana ? 'vocabulary' : subject.object;
-    const h = history ?? NO_HISTORY;
+    const kana = raw.object === 'kana_vocabulary';
+    const type = kana ? 'vocabulary' : raw.object;
     return {
-      ...japaneseInfo(jp, type, d.characters),
-      partsOfSpeech: d.parts_of_speech ?? [],
-      id: subject.id,
+      id: raw.id,
       type,
       level: d.level,
       position: d.lesson_position ?? 0,
+      hidden: !!d.hidden_at,
       glyph: d.characters ?? null,
       image: d.characters ? null : pickImage(d.character_images),
       meanings: normalizeMeanings(d.meanings),
@@ -441,8 +506,21 @@
         : kana ? [{ label: '', items: [{ text: d.characters, primary: true }] }]
           : normalizeReadings(d.readings),
       audios: type === 'vocabulary' ? normalizeAudios(d.pronunciation_audios) : [],
-      srsStage: assignment?.srs_stage ?? 0,
-      availableAt: assignment?.available_at ?? null,
+      partsOfSpeech: d.parts_of_speech ?? [],
+    };
+  }
+
+  // Assignment cache entry: [srs_stage, available_at]
+  const compactAssignment = (raw) => [raw.data.srs_stage, raw.data.available_at];
+
+  function toItem(subject, assignment, history, jp) {
+    const { hidden, ...fields } = subject;
+    const h = history ?? NO_HISTORY;
+    return {
+      ...fields,
+      ...japaneseInfo(jp, subject.type, subject.glyph),
+      srsStage: assignment?.[0] ?? 0,
+      availableAt: assignment?.[1] ?? null,
       history: h,
       leech: isLeech(h),
     };
@@ -454,11 +532,15 @@
       || a.position - b.position;
   }
 
+  // Everything is cached; the type and level filters are applied here.
   function buildItems() {
     const { subjects, assignments, japanese } = state.raw;
-    const bySubject = new Map(assignments.map((a) => [a.data.subject_id, a.data]));
-    return subjects
-      .map((s) => toItem(s, bySubject.get(s.id), state.stats.get(s.id) ?? null, japanese))
+    const types = new Set(selectedTypes());
+    const min = Number(els.levelMin.value);
+    const max = Number(els.levelMax.value);
+    return Object.values(subjects)
+      .filter((s) => !s.hidden && types.has(s.type) && s.level >= min && s.level <= max)
+      .map((s) => toItem(s, assignments[s.id], state.stats.get(s.id) ?? null, japanese))
       .sort(compareItems);
   }
 
@@ -493,12 +575,20 @@
     }
   }
 
+  function matchesJlpt(item, value) {
+    if (value === 'any') return true;
+    if (value === 'none') return item.jlpt === null;
+    // N5 is the easiest level: "up to N3" keeps N5, N4 and N3.
+    if (value.startsWith('upto')) return item.jlpt !== null && item.jlpt >= Number(value.slice(4));
+    return item.jlpt === Number(value);
+  }
+
   // JLPT, frequency, grade and word type. Any value other than "any" leaves radicals out.
   function matchesJapanese(item, f) {
     if (item.type === 'radical' && (f.jlpt !== 'any' || f.frequency !== 'any' || f.grade !== 'any' || f.pos !== 'any')) {
       return false;
     }
-    if (f.jlpt === 'none' ? item.jlpt !== null : f.jlpt !== 'any' && item.jlpt !== Number(f.jlpt)) return false;
+    if (!matchesJlpt(item, f.jlpt)) return false;
     if (f.frequency === 'rare') {
       if (item.frequency !== null && item.frequency <= RARE_FROM) return false;
     } else if (f.frequency !== 'any' && !(item.frequency !== null && item.frequency <= Number(f.frequency))) {
@@ -688,7 +778,7 @@
     // Japanese level filters are listed only when set.
     const extra = [els.jlpt, els.frequency, els.grade, els.pos]
       .filter((select) => select.value !== 'any')
-      .map((select) => (select === els.jlpt && select.value !== 'none' ? `JLPT ${select.selectedOptions[0].textContent}` : select.selectedOptions[0].textContent));
+      .map((select) => (select === els.jlpt && select.value !== 'none' ? `JLPT ${JLPT_QUICK_LABEL[select.value]}` : select.selectedOptions[0].textContent));
     els.filtersSummary.textContent = [types, levels, progress, ...extra].join(' · ');
   }
 
@@ -697,34 +787,41 @@
     els.revealedCount.textContent = state.view.length ? `${revealed} / ${state.view.length} revealed` : '';
   }
 
-  // Quick buttons for the mistake filter, each with the number of items it would show.
-  function renderQuickFilters(baseItems, now) {
-    const current = els.mistakes.value;
-    els.quickFilters.replaceChildren(...MISTAKE_VALUES.map((value) => {
-      const count = baseItems.reduce((n, item) => n + (matchesMistakes(item, value, now) ? 1 : 0), 0);
+  // A row of quick buttons that set a select, each with the number of items it would show.
+  function renderChips(container, select, values, labels, countFor) {
+    const current = select.value;
+    container.replaceChildren(...values.map((value) => {
       const button = el('button', {
         type: 'button',
         class: value === current ? 'quick active' : 'quick',
         'aria-pressed': String(value === current),
-      }, QUICK_LABEL[value], ' ', el('span', { class: 'quick-count' }, count));
+      }, labels[value], ' ', el('span', { class: 'quick-count' }, countFor(value)));
       button.addEventListener('click', () => {
-        els.mistakes.value = value;
-        els.mistakes.dispatchEvent(new Event('change'));
+        select.value = value;
+        select.dispatchEvent(new Event('change'));
       });
       return button;
     }));
   }
 
-  function applyFilters() {
+  const countMatching = (items, test) => items.reduce((n, item) => n + (test(item) ? 1 : 0), 0);
+
+  function applyFilters({ keepPage = false } = {}) {
     const now = Date.now();
     const progress = els.progress.value;
     const mistakes = els.mistakes.value;
     const japanese = japaneseFilters();
-    // The quick mistake buttons count items within every other filter.
-    const base = state.items.filter((item) => matchesProgress(item, progress, now) && matchesJapanese(item, japanese));
-    state.view = base.filter((item) => matchesMistakes(item, mistakes, now));
-    state.page = 0;
-    renderQuickFilters(base, now);
+    const forProgress = state.items.filter((item) => matchesProgress(item, progress, now));
+    // Each row of quick buttons counts items within every other filter.
+    const forMistakes = forProgress.filter((item) => matchesJapanese(item, japanese));
+    const forJlpt = forProgress.filter((item) => matchesMistakes(item, mistakes, now)
+      && matchesJapanese(item, { ...japanese, jlpt: 'any' }));
+    state.view = forMistakes.filter((item) => matchesMistakes(item, mistakes, now));
+    if (!keepPage) state.page = 0;
+    renderChips(els.quickFilters, els.mistakes, MISTAKE_VALUES, QUICK_LABEL,
+      (value) => countMatching(forMistakes, (item) => matchesMistakes(item, value, now)));
+    renderChips(els.quickJlpt, els.jlpt, JLPT_QUICK, JLPT_QUICK_LABEL,
+      (value) => countMatching(forJlpt, (item) => matchesJapanese(item, { ...japanese, jlpt: value })));
     updateFiltersSummary();
     renderList();
   }
@@ -769,29 +866,50 @@
 
     savePrefs();
     setBusy(true);
-    setMessage('Loading from WaniKani…');
+    // 1. Show the list at once from what is already known (memory or local cache).
+    let shown = false;
+    let cachedSubjects = null;
+    let cachedAssignments = null;
+    if (!state.raw) {
+      [cachedSubjects, cachedAssignments] = await Promise.all([readCollection('subjects'), readCollection('assignments')]);
+      if (cachedSubjects && cachedAssignments) {
+        state.raw = { subjects: cachedSubjects.records, assignments: cachedAssignments.records, japanese: await loadJapaneseData() };
+        state.stats = buildStatsMap(loadStatsCache());
+      }
+    }
+    if (state.raw) {
+      state.items = buildItems();
+      applyFilters();
+      els.filtersPanel.open = false;
+      shown = true;
+      setMessage('Checking WaniKani for updates…');
+    } else {
+      setMessage('Loading from WaniKani (first time: this can take a minute)…');
+    }
+
+    // 2. Fetch only what changed since the last sync, and redraw if anything did.
     try {
-      const levels = levelRange(min, max).join(',');
-      // Kana-only vocabulary is its own subject type in the API.
-      const apiTypes = types.flatMap((t) => (t === 'vocabulary' ? ['vocabulary', 'kana_vocabulary'] : [t])).join(',');
-      const [subjects, assignments, cache, japanese] = await Promise.all([
-        fetchAll(`${API_BASE}/subjects?${new URLSearchParams({ types: apiTypes, levels, hidden: 'false' })}`, token),
-        fetchAll(`${API_BASE}/assignments?${new URLSearchParams({ subject_types: apiTypes, levels })}`, token),
+      const [subjects, assignments, statsCache, japanese] = await Promise.all([
+        syncCollection('subjects', `${API_BASE}/subjects`, token, compactSubject, (raw) => raw.id, cachedSubjects),
+        syncCollection('assignments', `${API_BASE}/assignments`, token, compactAssignment, (raw) => raw.data.subject_id, cachedAssignments),
         syncStats(token),
         loadJapaneseData(),
       ]);
-      state.raw = { subjects, assignments, japanese };
-      state.stats = buildStatsMap(cache);
-      state.items = buildItems();
-      applyFilters();
-      // Collapse the filters once the list is there, so the cards start near the top of the screen.
-      els.filtersPanel.open = false;
+      state.raw = { subjects: subjects.records, assignments: assignments.records, japanese };
+      state.stats = buildStatsMap(statsCache);
+      if (!shown || subjects.changed || assignments.changed || statsCache.changed) {
+        state.items = buildItems();
+        // Keep the current page when the list was already on screen.
+        applyFilters({ keepPage: shown });
+        els.filtersPanel.open = false;
+      }
       const notes = [];
       if (!state.items.length) notes.push('No items for these filters.');
       if (!japanese) notes.push('The JLPT, frequency and grade data could not be loaded: those filters match nothing.');
       setMessage(notes.join(' '), !japanese);
     } catch (err) {
-      setMessage(err.message || 'Unknown error.', true);
+      const text = err.message || 'Unknown error.';
+      setMessage(shown ? `Could not update from WaniKani (${text}) Showing saved data.` : text, true);
     } finally {
       setBusy(false);
     }
@@ -828,6 +946,7 @@
     storageRemove(STORAGE_TOKEN);
     storageRemove(STORAGE_STATS);
     storageRemove(OLD_STORAGE_STATS);
+    dbClear();
     state.raw = null;
     state.stats = new Map();
     state.items = [];

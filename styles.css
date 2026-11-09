@@ -594,3 +594,17 @@ button:disabled { opacity: 0.5; cursor: progress; }
 .jp-filters { display: grid; gap: 0.5rem; }
 .jp-filters .row-keep { grid-template-columns: 1fr 1fr; }
 .tag.jlpt { font-weight: 600; }
+
+/* Quick JLPT filters, labelled; on phones each row of quick filters scrolls sideways to stay one line high. */
+#quick-jlpt::before {
+  content: "JLPT";
+  align-self: center;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+@media (max-width: 480px) {
+  .quick-filters { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-left: -16px; margin-right: -16px; padding: 0 16px; }
+  .quick-filters::-webkit-scrollbar { display: none; }
+  .quick { flex: none; }
+}
