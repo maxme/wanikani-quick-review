@@ -963,10 +963,11 @@
       els.studyProgress.textContent = `Done: ${total} card${total > 1 ? 's' : ''}`;
       els.studyStage.replaceChildren(el('div', { class: 'study-summary' },
         el('div', { class: 'study-score' }, `${study.knew} / ${total}`),
-        el('p', {}, study.missed.length ? `${study.missed.length} to review again.` : 'You knew them all.')));
+        el('p', {}, study.missed.length ? `${study.missed.length} missed:` : 'You knew them all.'),
+        study.missed.length ? el('ol', { class: 'list study-missed' }, ...study.missed.map(buildMissedRow)) : null));
       const missed = [...study.missed];
       els.studyButtons.replaceChildren(
-        missed.length ? studyButton(`Study the ${missed.length} missed`, 'Space', () => startStudy(missed), 'primary') : null,
+        missed.length ? studyButton(`Retry ${missed.length} missed`, 'Space', () => startStudy(missed), 'primary') : null,
         studyButton('Start again', 'R', () => startStudy(study.items)),
         studyButton('Close', 'Esc', closeStudy));
       return;
@@ -997,6 +998,24 @@
       : [studyButton('Show answer', 'Space', revealStudy, 'primary')]));
   }
 
+  // A missed card in the end-of-session list: always revealed, with its audio buttons.
+  function buildMissedRow(item) {
+    const voice = () => state.voice.get(item.id) ?? 0;
+    const content = el('div', { class: 'answer-content' });
+    const renderAnswer = () => content.replaceChildren(...buildAnswer(item, voice(), {
+      onPlay: () => playAudio(item.audios[voice()].url),
+      onSwitch: () => {
+        state.voice.set(item.id, (voice() + 1) % item.audios.length);
+        renderAnswer();
+        playAudio(item.audios[voice()].url);
+      },
+    }));
+    renderAnswer();
+    return el('li', {}, el('div', { class: `card revealed static type-${item.type}` },
+      el('div', { class: 'glyph-tile', title: TYPE_LABEL[item.type] }, buildGlyph(item)),
+      el('div', { class: 'card-body' }, buildMeta(item), el('div', { class: 'answer' }, content))));
+  }
+
   function revealStudy() {
     study.revealed = true;
     renderStudy();
@@ -1023,7 +1042,8 @@
     else if (e.target.closest?.('#study-view button') && (e.key === ' ' || e.key === 'Enter')) handled = false;
     else if (done && (e.key === ' ' || e.key === 'Enter') && study.missed.length) startStudy([...study.missed]);
     else if (done && (e.key === 'r' || e.key === 'R')) startStudy(study.items);
-    else if (!done && !study.revealed && (e.key === ' ' || e.key === 'Enter')) revealStudy();
+    // Before the answer is shown, the answer keys (←/→, 1/2) also just show it; pressed again, they answer.
+    else if (!done && !study.revealed && [' ', 'Enter', 'ArrowLeft', 'ArrowRight', '1', '2'].includes(e.key)) revealStudy();
     else if (!done && study.revealed && (e.key === '1' || e.key === 'ArrowLeft')) answerStudy(false);
     else if (!done && study.revealed && (e.key === '2' || e.key === 'ArrowRight')) answerStudy(true);
     else handled = false;

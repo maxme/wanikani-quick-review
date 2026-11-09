@@ -26,8 +26,9 @@ Each item shows its Japanese text on the left. The **meaning** and **reading** s
 - **Cards**: one column on phones, two or three on wider screens; a compact view shows one short row per card.
   Japanese text uses Noto Sans JP on every device.
 - **Keyboard**: ↑/↓ (or k/j) move between cards, Space or Enter reveals.
-- **Study mode**: one card at a time over the current list (in its current order). Space reveals; *Didn’t know* (1 or ←)
-  and *Knew it* (2 or →) move on. At the end, the missed cards can be studied again. Answers are only kept for the
+- **Study mode**: one card at a time over the current list (in its current order). Space, ← or → reveals the answer; then
+  *Didn’t know* (1 or ←) and *Knew it* (2 or →) move on. At the end, the missed cards are listed with their answers
+  and can be studied again. Answers are only kept for the
   session, nothing is sent to WaniKani.
 - **Theme**: auto (follows the system), light or dark.
 

@@ -703,7 +703,13 @@ kbd {
   opacity: 0.7;
 }
 
-.study-summary { text-align: center; }
+.study-summary { text-align: center; width: min(100%, 40rem); max-height: 100%; overflow-y: auto; }
+.study-summary p { margin: 0.25rem 0 0.75rem; color: var(--muted); }
+/* The missed cards: one column, read-only. */
+.study-missed { grid-template-columns: minmax(0, 1fr); text-align: left; gap: 0.5rem; padding-bottom: 0.5rem; }
+.card.static { cursor: default; }
+.study-missed .meanings, .study-missed .readings { white-space: normal; }
+.card.static:active { transform: none; }
 .study-score { font-size: 3rem; font-weight: 700; }
 
 /* Keyboard hints are noise on touch screens. */
