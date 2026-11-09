@@ -215,6 +215,7 @@ button:disabled { opacity: 0.5; cursor: progress; }
   top: 0;
   z-index: 2;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.4rem;
   margin: 0 -16px 0.75rem;
   padding: 0.45rem 16px 0.5rem;
@@ -223,9 +224,12 @@ button:disabled { opacity: 0.5; cursor: progress; }
   border-bottom: 1px solid var(--border);
   color: var(--muted);
   font-size: 0.92rem;
+  /* The quick filters bleed to the screen edges; nothing may widen the page. */
+  overflow-x: clip;
 }
 
 .toolbar-row {
+  min-width: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -233,6 +237,8 @@ button:disabled { opacity: 0.5; cursor: progress; }
 }
 
 .count { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.count-unit { display: none; }
+@media (max-width: 420px) { .count-unit { display: inline; } }
 
 /* Revealed cards, as a thin bar. */
 .progress {
@@ -340,6 +346,7 @@ button:disabled { opacity: 0.5; cursor: progress; }
   display: flex;
   align-items: center;
   gap: 0.35rem;
+  flex: none;
 }
 
 .status {
@@ -754,4 +761,20 @@ label.sort select {
 @media (max-width: 560px) {
   label.sort { padding: 0; }
   .sort-label { display: none; }
+}
+
+/* Six round buttons and the order pill must fit next to the count on a phone. */
+@media (max-width: 420px) {
+  .toolbar .actions { gap: 0.25rem; }
+  .toolbar .icon-btn, .toolbar label.sort { width: 1.95rem; min-width: 1.95rem; height: 1.95rem; }
+  .toolbar .count { font-size: 0.8rem; }
+  .toolbar-row { gap: 0.4rem; }
+  .toolbar .count { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .count-range { display: none; }
+  .toolbar #study { padding: 0.3rem 0.55rem; }
+}
+@media (max-width: 340px) {
+  .count-unit { display: none; }
+  .toolbar .actions { gap: 0.2rem; }
+  .toolbar .icon-btn, .toolbar label.sort { width: 1.8rem; min-width: 1.8rem; height: 1.8rem; font-size: 0.9rem; }
 }

@@ -114,29 +114,50 @@
     },
   ];
   // ---------- Sort orders ----------
-  // Ascending comparison where null/undefined always goes last.
-  const asc = (x, y) => (x === y ? 0 : x == null ? 1 : y == null ? -1 : x - y);
-  // Descending, null/undefined still last.
-  const desc = (x, y) => asc(x == null ? null : -x, y == null ? null : -y);
+  // Each order is a list of [key, direction] (1 ascending, -1 descending). Reversing flips every direction,
+  // but items without a value (null: never reviewed, no frequency, not in the JLPT lists…) always stay last.
+  // Remaining ties keep the WaniKani order (level, type, lesson position) through a stable sort.
+  function compareKey(x, y, dir) {
+    if (x === y) return 0;
+    if (x == null) return 1;
+    if (y == null) return -1;
+    return (x - y) * dir;
+  }
   const lastMissAt = (item) => (item.history.lastReviewMissed ? item.history.lastReviewAt : null);
-  // Each order ties back to the WaniKani order (level, type, lesson position) through a stable sort.
   const SORTS = {
-    level: { label: 'Level', compare: null },
-    misses: { label: 'Most misses', compare: (a, b) => b.history.wrong - a.history.wrong },
+    level: {
+      label: 'Level', reversedLabel: 'Level (highest first)',
+      keys: [[(i) => i.level, 1], [(i) => TYPE_ORDER[i.type], 1], [(i) => i.position, 1]],
+    },
+    misses: { label: 'Most misses', reversedLabel: 'Fewest misses', keys: [[(i) => i.history.wrong, -1]] },
     difficulty: {
-      label: 'Hardest (lowest % correct)',
-      compare: (a, b) => asc(a.history.percentCorrect, b.history.percentCorrect) || b.history.wrong - a.history.wrong,
+      label: 'Hardest (lowest % correct)', reversedLabel: 'Easiest (highest % correct)',
+      keys: [[(i) => i.history.percentCorrect, 1], [(i) => i.history.wrong, -1]],
     },
-    recent: { label: 'Recently missed', compare: (a, b) => desc(lastMissAt(a), lastMissAt(b)) },
-    jlpt: { label: 'JLPT (N5 → N1)', compare: (a, b) => desc(a.jlpt, b.jlpt) },
-    frequency: { label: 'Most frequent', compare: (a, b) => asc(a.frequency, b.frequency) },
-    srs: { label: 'SRS stage (Apprentice first)', compare: (a, b) => asc(a.srsStage || null, b.srsStage || null) },
+    recent: { label: 'Recently missed', reversedLabel: 'Missed longest ago', keys: [[lastMissAt, -1]] },
+    jlpt: { label: 'JLPT (N5 → N1)', reversedLabel: 'JLPT (N1 → N5)', keys: [[(i) => i.jlpt, -1]] },
+    frequency: { label: 'Most frequent', reversedLabel: 'Least frequent', keys: [[(i) => i.frequency, 1]] },
+    srs: {
+      label: 'SRS stage (Apprentice first)', reversedLabel: 'SRS stage (Burned first)',
+      keys: [[(i) => i.srsStage || null, 1]],
+    },
     due: {
-      label: 'Next review',
-      compare: (a, b) => asc(a.availableAt && Date.parse(a.availableAt), b.availableAt && Date.parse(b.availableAt)),
+      label: 'Next review', reversedLabel: 'Latest review',
+      keys: [[(i) => (i.availableAt ? Date.parse(i.availableAt) : null), 1]],
     },
-    random: { label: 'Random', compare: null },
+    random: { label: 'Random', keys: null },
   };
+
+  function sortComparator(order, reversed) {
+    const keys = SORTS[order].keys.map(([key, dir]) => [key, reversed ? -dir : dir]);
+    return (a, b) => {
+      for (const [key, dir] of keys) {
+        const c = compareKey(key(a), key(b), dir);
+        if (c) return c;
+      }
+      return 0;
+    };
+  }
 
   const GROUP_BY_KEY = Object.fromEntries(FILTER_GROUPS.map((g) => [g.key, g]));
   const emptyFilters = () => Object.fromEntries(FILTER_GROUPS.map((g) => [g.key, new Set()]));
@@ -167,6 +188,7 @@
     quickJlpt: $('#quick-jlpt'),
     clearFilters: $('#clear-filters'),
     sort: $('#sort'),
+    reverse: $('#reverse'),
     sortLabel: $('#sort-label'),
     autoplay: $('#autoplay'),
     results: $('#results'),
@@ -197,7 +219,7 @@
   // stats: Map subject id -> review history built from the local statistics cache
   // voice: chosen pronunciation voice per vocabulary id
   // filters: Set of selected chip values per filter group
-  const state = { filters: emptyFilters(), raw: null, stats: new Map(), items: [], view: [], page: 0, revealed: new Set(), voice: new Map() };
+  const state = { reversed: false, filters: emptyFilters(), raw: null, stats: new Map(), items: [], view: [], page: 0, revealed: new Set(), voice: new Map() };
 
   // ---------- Local storage (token, preferences, theme, statistics cache) ----------
   function storageGet(key) {
@@ -226,6 +248,7 @@
       autoplay: els.autoplay.checked,
       compact: document.body.classList.contains('compact'),
       sort: els.sort.value,
+      reversed: state.reversed,
     }));
   }
 
@@ -333,6 +356,7 @@
     if (typeof prefs.autoplay === 'boolean') els.autoplay.checked = prefs.autoplay;
     setCompact(prefs.compact === true);
     if (SORTS[prefs.sort]) els.sort.value = prefs.sort;
+    state.reversed = prefs.reversed === true;
     updateSortLabel();
   }
 
@@ -341,11 +365,20 @@
   }
 
   function updateSortLabel() {
-    const { label } = SORTS[els.sort.value];
+    const sort = SORTS[els.sort.value];
+    const random = !sort.keys;
+    const reversed = state.reversed && !random;
+    const label = reversed ? sort.reversedLabel : sort.label;
     els.sortLabel.textContent = label.replace(/ \(.*\)$/, '');
     const wrapper = els.sort.parentElement;
     wrapper.title = `Order: ${label}`;
-    wrapper.classList.toggle('active', els.sort.value !== 'level');
+    wrapper.classList.toggle('active', els.sort.value !== 'level' || reversed);
+    // Reversing a random order means nothing.
+    els.reverse.disabled = random;
+    els.reverse.setAttribute('aria-pressed', String(reversed));
+    els.reverse.textContent = reversed ? '↑' : '↓';
+    els.reverse.title = random ? 'Reverse order (not for random)' : reversed ? `Reversed: ${label}` : 'Reverse order';
+    els.reverse.setAttribute('aria-label', els.reverse.title);
   }
 
   // Sorts the filtered list in place by the chosen order.
@@ -357,8 +390,8 @@
         const j = Math.floor(Math.random() * (i + 1));
         [arr[i], arr[j]] = [arr[j], arr[i]];
       }
-    } else if (SORTS[order].compare) {
-      state.view.sort(SORTS[order].compare);
+    } else {
+      state.view.sort(sortComparator(order, state.reversed));
     }
   }
 
@@ -848,9 +881,14 @@
     els.list.replaceChildren(...slice.map(buildCard));
     updateRevealedCount();
     const n = (x) => x.toLocaleString('en-US');
-    els.count.textContent = !total ? 'No items match these filters'
-      : pages > 1 ? `${n(start + 1)}–${n(start + slice.length)} of ${n(total)}`
-        : `${n(total)} item${total > 1 ? 's' : ''}`;
+    // With several pages, wide screens show the range; phones show only the total (the pager shows the page).
+    if (!total) els.count.textContent = 'No items match these filters';
+    else if (pages > 1) {
+      els.count.replaceChildren(
+        el('span', { class: 'count-range' }, `${n(start + 1)}–${n(start + slice.length)} of `),
+        n(total),
+        el('span', { class: 'count-unit' }, ' items'));
+    } else els.count.textContent = `${n(total)} item${total > 1 ? 's' : ''}`;
     els.study.disabled = total === 0;
     els.pager.hidden = pages <= 1;
     els.pageLabel.textContent = `Page ${state.page + 1} of ${pages}`;
@@ -1275,7 +1313,18 @@
   });
 
   els.shuffle.addEventListener('click', shuffleView);
+  els.reverse.addEventListener('click', () => {
+    state.reversed = !state.reversed;
+    updateSortLabel();
+    savePrefs();
+    if (!state.raw) return;
+    applyFilters();
+    window.scrollTo({ top: 0 });
+  });
+
   els.sort.addEventListener('change', () => {
+    // A new order starts in its natural direction.
+    state.reversed = false;
     updateSortLabel();
     savePrefs();
     if (!state.raw) return;
