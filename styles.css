@@ -62,26 +62,25 @@ a { color: var(--accent); }
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  padding: 0.9rem 16px;
+  padding: 0.5rem 16px;
   border-bottom: 1px solid var(--border);
   background: var(--panel);
 }
 
 .topbar h1 {
   margin: 0;
-  font-size: 1.15rem;
+  font-size: 1.05rem;
+  white-space: nowrap;
 }
 
 .topbar-actions {
   display: flex;
   align-items: center;
-  gap: 0.25rem;
-  flex-wrap: wrap;
-  justify-content: flex-end;
+  gap: 0.35rem;
 }
 
 .wrap {
-  max-width: 760px;
+  max-width: 1200px;
   margin: 0 auto;
   padding: 16px;
   display: grid;
@@ -191,6 +190,23 @@ button.ghost {
   font-size: 0.9rem;
 }
 
+button.small { font-size: 0.85rem; padding: 0.3rem 0.7rem; }
+
+/* Round icon buttons (theme, shuffle, show/hide all, density). */
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.1rem;
+  height: 2.1rem;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.icon-btn[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+
 button:disabled { opacity: 0.5; cursor: progress; }
 
 /* The results toolbar stays visible while scrolling through the cards. */
@@ -198,13 +214,10 @@ button:disabled { opacity: 0.5; cursor: progress; }
   position: sticky;
   top: 0;
   z-index: 2;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.6rem;
+  display: grid;
+  gap: 0.4rem;
   margin: 0 -16px 0.75rem;
-  padding: 0.6rem 16px;
+  padding: 0.45rem 16px 0.5rem;
   background: color-mix(in srgb, var(--bg) 92%, transparent);
   backdrop-filter: blur(6px);
   border-bottom: 1px solid var(--border);
@@ -212,14 +225,28 @@ button:disabled { opacity: 0.5; cursor: progress; }
   font-size: 0.92rem;
 }
 
-.toolbar-info {
+.toolbar-row {
   display: flex;
-  flex-direction: column;
-  gap: 0.05rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
 }
 
-.revealed-count {
-  font-size: 0.8rem;
+.count { font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* Revealed cards, as a thin bar. */
+.progress {
+  height: 3px;
+  border-radius: 3px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  width: 0;
+  background: var(--accent);
+  transition: width 0.2s ease;
 }
 
 /* Collapsible filter panel */
@@ -257,13 +284,28 @@ button:disabled { opacity: 0.5; cursor: progress; }
 
 #filters-panel[open] .summary-text { display: none; }
 
-/* Quick mistake filters */
-.quick-filters {
+/* Quick filters: one line, scrolling sideways when it does not fit. */
+.quick-row {
   display: flex;
-  flex-wrap: wrap;
+  align-items: center;
   gap: 0.4rem;
-  margin-bottom: 0.75rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+  margin: 0 -16px;
+  padding: 0 16px;
 }
+
+.quick-row::-webkit-scrollbar { display: none; }
+
+.quick-group { display: flex; gap: 0.4rem; flex: none; }
+
+#quick-jlpt {
+  padding-left: 0.6rem;
+  border-left: 1px solid var(--border);
+}
+
+.quick-row .quick { flex: none; font-size: 0.8rem; padding: 0.2rem 0.6rem; }
+.quick.clear { color: var(--danger); border-color: var(--danger); }
 
 .quick {
   display: inline-flex;
@@ -296,11 +338,9 @@ button:disabled { opacity: 0.5; cursor: progress; }
 
 .actions {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
+  align-items: center;
+  gap: 0.35rem;
 }
-
-.actions button { font-size: 0.88rem; padding: 0.4rem 0.7rem; }
 
 .status {
   min-height: 1.5rem;
@@ -330,13 +370,17 @@ button:disabled { opacity: 0.5; cursor: progress; }
   margin: 0;
   padding: 0;
   display: grid;
+  /* One column on phones, two or three on wider screens. */
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 22rem), 1fr));
   gap: 0.75rem;
 }
 
 .card {
   --type-color: var(--radical);
   display: grid;
-  grid-template-columns: 10rem 1fr;
+  grid-template-columns: 7.5rem 1fr;
+  height: 100%;
+  scroll-margin: 7rem 0 1rem;
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 14px;
@@ -369,7 +413,7 @@ button:disabled { opacity: 0.5; cursor: progress; }
   align-items: center;
   justify-content: center;
   padding: 0.5rem;
-  min-height: 5.5rem;
+  min-height: 5.25rem;
   background: color-mix(in srgb, var(--type-color) 16%, var(--panel));
   border-right: 3px solid var(--type-color);
 }
@@ -377,7 +421,8 @@ button:disabled { opacity: 0.5; cursor: progress; }
 /* One size for every item: long words wrap onto a second line instead of shrinking. */
 .glyph {
   font-family: var(--glyph-font);
-  font-size: 2rem;
+  font-size: 1.9rem;
+  font-weight: 400;
   line-height: 1.2;
   text-align: center;
   line-break: strict;
@@ -401,52 +446,18 @@ button:disabled { opacity: 0.5; cursor: progress; }
   min-width: 0;
 }
 
-.card-head {
+/* Level, JLPT, SRS stage and misses: one small grey line. */
+.meta {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 0.5rem;
-}
-
-/* Tags stay on one line to keep cards short; the least important ones are clipped on narrow screens. */
-.tags {
-  display: flex;
-  flex-wrap: nowrap;
-  gap: 0.3rem;
-  min-width: 0;
+  gap: 0.55rem;
+  font-size: 0.72rem;
+  color: var(--muted);
+  white-space: nowrap;
   overflow: hidden;
 }
 
-.tag {
-  font-size: 0.72rem;
-  line-height: 1.5;
-  color: var(--muted);
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 0 0.5rem;
-  white-space: nowrap;
-}
-
-.tag.tag-type {
-  color: var(--type-color);
-  border-color: var(--type-color);
-  font-weight: 600;
-}
-
-.tag.leech {
-  color: var(--danger);
-  border-color: var(--danger);
-  font-weight: 600;
-}
-
-.chevron {
-  font-size: 1.4rem;
-  line-height: 1;
-  color: var(--muted);
-  transition: transform 0.2s ease;
-}
-
-.card.revealed .chevron { transform: rotate(90deg); }
+.meta .jlpt { font-weight: 600; color: var(--text); }
+.meta .leech { font-weight: 600; color: var(--danger); }
 
 .answer {
   position: relative;
@@ -454,7 +465,7 @@ button:disabled { opacity: 0.5; cursor: progress; }
 }
 
 /* Always laid out, so a card has the same height whether it is revealed or not.
-   While hidden it is invisible (its buttons cannot be focused) and the placeholder covers it. */
+   While hidden it is invisible (its buttons cannot be focused) and a faint hint shows instead. */
 .answer-content {
   display: grid;
   gap: 0.15rem;
@@ -464,21 +475,20 @@ button:disabled { opacity: 0.5; cursor: progress; }
 .card:not(.revealed) .answer-content { visibility: hidden; }
 .card.revealed .answer-content { animation: reveal 0.18s ease-out; }
 
-.placeholder {
+/* Faint hint where the answer will appear. */
+.answer::after {
+  content: "tap to reveal";
   position: absolute;
   inset: 0;
   display: flex;
   align-items: center;
-  padding: 0 0.7rem;
-  border: 1px dashed var(--border);
-  border-radius: 8px;
   color: var(--muted);
-  font-size: 0.88rem;
-  white-space: nowrap;
-  overflow: hidden;
+  opacity: 0.55;
+  font-size: 0.8rem;
+  pointer-events: none;
 }
 
-.card.revealed .placeholder { display: none; }
+.card.revealed .answer::after { display: none; }
 
 @keyframes reveal {
   from { opacity: 0; transform: translateY(-3px); }
@@ -487,8 +497,8 @@ button:disabled { opacity: 0.5; cursor: progress; }
 
 /* One line each: long lists end with an ellipsis (the full meanings are in the tooltip). */
 .meanings {
-  font-size: 1.1rem;
-  font-weight: 600;
+  font-size: 1.12rem;
+  font-weight: 650;
   line-height: 1.35;
   white-space: nowrap;
   overflow: hidden;
@@ -532,7 +542,7 @@ button:disabled { opacity: 0.5; cursor: progress; }
 
 .readings .jp {
   font-family: var(--glyph-font);
-  font-size: 1.05rem;
+  font-size: 0.98rem;
 }
 
 .audio {
@@ -562,15 +572,12 @@ button:disabled { opacity: 0.5; cursor: progress; }
 .audio-btn.play-btn:hover { filter: brightness(1.08); }
 
 @media (max-width: 480px) {
-  .topbar { padding: 0.6rem 16px; }
-  .topbar h1 { font-size: 1rem; }
-  .topbar-actions button { padding: 0.35rem 0.6rem; font-size: 0.82rem; }
-  .card { grid-template-columns: 7.5rem 1fr; }
+  .card { grid-template-columns: 6.5rem 1fr; }
   .glyph-tile { min-height: 4.75rem; padding: 0.4rem; }
   .glyph { font-size: 1.6rem; }
   .glyph img { width: 2.3rem; height: 2.3rem; }
   .card-body { padding: 0.5rem 0.7rem; }
-  .meanings { font-size: 1rem; }
+  .meanings { font-size: 1.02rem; }
   .row { grid-template-columns: 1fr; }
 }
 
@@ -581,19 +588,126 @@ button:disabled { opacity: 0.5; cursor: progress; }
 .filter-group legend { margin-bottom: 0.1rem; }
 .chips { display: flex; flex-wrap: wrap; gap: 0.4rem; }
 .quick.empty { opacity: 0.5; }
-.clear-filters { margin: -0.25rem 0 0.75rem; font-size: 0.85rem; padding: 0.3rem 0.75rem; }
-.tag.jlpt { font-weight: 600; }
 
-/* Quick JLPT filters, labelled; on phones each row of quick filters scrolls sideways to stay one line high. */
+/* JLPT label in front of the quick JLPT chips. */
 #quick-jlpt::before {
   content: "JLPT";
   align-self: center;
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   font-weight: 600;
   color: var(--muted);
 }
-@media (max-width: 480px) {
-  .quick-filters { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-left: -16px; margin-right: -16px; padding: 0 16px; }
-  .quick-filters::-webkit-scrollbar { display: none; }
-  .quick { flex: none; }
+
+/* ---------- Compact view: one short row per card ---------- */
+body.compact .list { gap: 0.4rem; }
+body.compact .card { grid-template-columns: 5.5rem 1fr; border-radius: 10px; }
+body.compact .glyph-tile { min-height: 3.25rem; padding: 0.25rem; border-right-width: 2px; }
+body.compact .glyph { font-size: 1.3rem; }
+body.compact .glyph img { width: 1.8rem; height: 1.8rem; }
+body.compact .card-body { padding: 0.3rem 0.7rem; gap: 0; }
+body.compact .meta { display: none; }
+body.compact .meanings { font-size: 0.98rem; }
+body.compact .readings .jp { font-size: 0.92rem; }
+body.compact .audio-btn { width: 1.5rem; height: 1.5rem; font-size: 0.7rem; }
+
+.keys-hint { text-align: center; margin: 0; }
+
+/* ---------- Study mode ---------- */
+body.studying { overflow: hidden; }
+
+.study {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.75rem 16px max(1rem, env(safe-area-inset-bottom));
+  background: var(--bg);
 }
+
+.study-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.study-stage {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+}
+
+.study-card {
+  --type-color: var(--radical);
+  width: min(100%, 34rem);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.study-card.type-kanji { --type-color: var(--kanji); }
+.study-card.type-vocabulary { --type-color: var(--vocab); }
+
+.study-card .glyph-tile {
+  min-height: 11rem;
+  border-right: 0;
+  border-bottom: 3px solid var(--type-color);
+}
+
+.study-card .glyph { font-size: clamp(2.6rem, 12vw, 4.5rem); }
+.study-card .glyph img { width: 5rem; height: 5rem; }
+
+.study-answer {
+  display: grid;
+  gap: 0.5rem;
+  padding: 1rem 1.2rem 1.2rem;
+  min-height: 7.5rem;
+}
+
+.study-card:not(.revealed) .answer-content { visibility: hidden; }
+.study-card.revealed .answer-content { animation: reveal 0.18s ease-out; }
+.study-card .meanings { font-size: 1.35rem; white-space: normal; }
+.study-card .readings { white-space: normal; }
+.study-card .readings .jp { font-size: 1.2rem; }
+
+.study-buttons {
+  display: flex;
+  justify-content: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.study-buttons button {
+  flex: 1 1 10rem;
+  max-width: 16rem;
+  padding: 0.8rem 1rem;
+  font-weight: 600;
+}
+
+.study-buttons .knew { background: #2f9e5b; border-color: #2f9e5b; color: #fff; }
+.study-buttons .miss { background: var(--danger); border-color: var(--danger); color: #fff; }
+
+kbd {
+  margin-left: 0.5rem;
+  padding: 0 0.35rem;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  font: 0.7rem/1.4 system-ui, sans-serif;
+  opacity: 0.7;
+}
+
+.study-summary { text-align: center; }
+.study-score { font-size: 3rem; font-weight: 700; }
+
+/* Keyboard hints are noise on touch screens. */
+@media (hover: none) {
+  .keys-hint, kbd { display: none; }
+}
+.study:focus { outline: none; }

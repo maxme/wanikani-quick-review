@@ -21,8 +21,6 @@
   const OLD_STORAGE_STATS = 'wk-quick-review.stats';
 
   const TYPE_LABEL = { radical: 'Radical', kanji: 'Kanji', vocabulary: 'Vocabulary' };
-  // Shorter labels for the card tags, so they fit on one line on phones.
-  const TYPE_TAG = { radical: 'Radical', kanji: 'Kanji', vocabulary: 'Vocab' };
   const TYPE_ORDER = { radical: 0, kanji: 1, vocabulary: 2 };
   // The plain "reading" group of vocabulary gets no row label: the card already says "Reading".
   const READING_LABEL = { onyomi: 'On’yomi', kunyomi: 'Kun’yomi', nanori: 'Nanori', reading: '' };
@@ -120,6 +118,13 @@
   const JAPANESE_DATA_URL = 'data/japanese.json';
   const HAN = /\p{Script=Han}/u;
   const THEME_LABEL = { auto: 'auto', light: 'light', dark: 'dark' };
+  // Inline SVG icons: text symbols such as ◐ render inconsistently across fonts.
+  const svg = (body) => `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">${body}</svg>`;
+  const THEME_ICON = {
+    auto: svg('<circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor"/>'),
+    light: svg('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>'),
+    dark: svg('<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/>'),
+  };
   const THEME_NEXT = { auto: 'light', light: 'dark', dark: 'auto' };
 
   const $ = (sel) => document.querySelector(sel);
@@ -145,13 +150,20 @@
     nextPage: $('#next-page'),
     pageLabel: $('#page-label'),
     shuffle: $('#shuffle'),
-    showAll: $('#show-all'),
-    hideAll: $('#hide-all'),
+    toggleAll: $('#toggle-all'),
+    density: $('#density'),
+    revealedBar: $('#revealed-bar'),
+    study: $('#study'),
+    studyView: $('#study-view'),
+    studyProgress: $('#study-progress'),
+    studyBar: $('#study-bar'),
+    studyStage: $('#study-stage'),
+    studyButtons: $('#study-buttons'),
+    studyClose: $('#study-close'),
     message: $('#message'),
     theme: $('#theme'),
     filtersPanel: $('#filters-panel'),
     filtersSummary: $('#filters-summary'),
-    revealedCount: $('#revealed-count'),
   };
 
   // raw: subjects and assignments as returned by the API (null until loaded)
@@ -185,6 +197,7 @@
       levelMax: Number(els.levelMax.value),
       filters: Object.fromEntries(Object.entries(state.filters).map(([key, set]) => [key, [...set]])),
       autoplay: els.autoplay.checked,
+      compact: document.body.classList.contains('compact'),
     }));
   }
 
@@ -202,7 +215,9 @@
       document.documentElement.dataset.theme = theme;
       storageSet(STORAGE_THEME, theme);
     }
-    els.theme.textContent = `Theme: ${THEME_LABEL[theme]}`;
+    els.theme.innerHTML = THEME_ICON[theme];
+    els.theme.title = `Theme: ${THEME_LABEL[theme]}`;
+    els.theme.setAttribute('aria-label', `Theme: ${THEME_LABEL[theme]}`);
   }
 
   // ---------- DOM helpers ----------
@@ -288,6 +303,14 @@
       }
     }
     if (typeof prefs.autoplay === 'boolean') els.autoplay.checked = prefs.autoplay;
+    setCompact(prefs.compact === true);
+  }
+
+  function setCompact(on) {
+    document.body.classList.toggle('compact', on);
+    els.density.setAttribute('aria-pressed', String(on));
+    els.density.title = on ? 'Comfortable view' : 'Compact view';
+    els.density.setAttribute('aria-label', els.density.title);
   }
 
   // ---------- WaniKani API calls ----------
@@ -686,33 +709,32 @@
     return nodes;
   }
 
+  // Small grey line: level, JLPT, SRS stage, misses. The type is given by the card colour (and the tile label).
+  function buildMeta(item) {
+    const wrong = item.history.wrong;
+    const parts = [
+      el('span', {}, `Lvl ${item.level}`),
+      item.jlpt ? el('span', { class: 'jlpt', title: `JLPT N${item.jlpt}` }, `N${item.jlpt}`) : null,
+      item.srsStage >= 1 ? el('span', {}, SRS_LABEL[item.srsStage]) : null,
+      wrong > 0 ? el('span', { title: `${wrong} miss${wrong > 1 ? 'es' : ''} in total` }, `✗ ${wrong}`) : null,
+      item.leech ? el('span', { class: 'leech' }, 'Leech') : null,
+    ].filter(Boolean);
+    return el('div', { class: 'meta' }, ...parts);
+  }
+
   function buildCard(item) {
     // The answer is always laid out, so the card keeps the same height whether it is revealed or not.
-    // While hidden, CSS makes the content invisible (and its buttons unfocusable) and shows the placeholder over it.
+    // While hidden, CSS makes it invisible (its buttons cannot be focused) and shows a faint hint instead.
     const content = el('div', { class: 'answer-content' });
-    const answer = el('div', { class: 'answer' },
-      content,
-      el('div', { class: 'placeholder', 'aria-hidden': 'true' }, 'Tap to reveal'));
-    const srs = item.srsStage >= 1 ? SRS_LABEL[item.srsStage] : null;
-    const wrong = item.history.wrong;
+    const answer = el('div', { class: 'answer' }, content);
     const card = el('div', {
       class: `card type-${item.type}`,
       role: 'button',
       tabindex: '0',
       'aria-expanded': 'false',
     },
-      el('div', { class: 'glyph-tile' }, buildGlyph(item)),
-      el('div', { class: 'card-body' },
-        el('div', { class: 'card-head' },
-          el('div', { class: 'tags' },
-            el('span', { class: 'tag tag-type' }, TYPE_TAG[item.type]),
-            el('span', { class: 'tag' }, `Lvl ${item.level}`),
-            item.jlpt ? el('span', { class: 'tag jlpt', title: `JLPT N${item.jlpt}` }, `N${item.jlpt}`) : null,
-            srs ? el('span', { class: 'tag' }, srs) : null,
-            item.leech ? el('span', { class: 'tag leech' }, 'Leech') : null,
-            wrong > 0 ? el('span', { class: 'tag', title: `${wrong} miss${wrong > 1 ? 'es' : ''} in total` }, `✗ ${wrong}`) : null),
-          el('span', { class: 'chevron', 'aria-hidden': 'true' }, '›')),
-        answer));
+      el('div', { class: 'glyph-tile', title: TYPE_LABEL[item.type] }, buildGlyph(item)),
+      el('div', { class: 'card-body' }, buildMeta(item), answer));
 
     const renderAnswer = () => {
       const voiceIndex = state.voice.get(item.id) ?? 0;
@@ -767,9 +789,11 @@
 
     els.list.replaceChildren(...slice.map(buildCard));
     updateRevealedCount();
-    els.count.textContent = total
-      ? `Showing ${start + 1}–${start + slice.length} of ${total} items`
-      : 'No items match these filters';
+    const n = (x) => x.toLocaleString('en-US');
+    els.count.textContent = !total ? 'No items match these filters'
+      : pages > 1 ? `${n(start + 1)}–${n(start + slice.length)} of ${n(total)}`
+        : `${n(total)} item${total > 1 ? 's' : ''}`;
+    els.study.disabled = total === 0;
     els.pager.hidden = pages <= 1;
     els.pageLabel.textContent = `Page ${state.page + 1} of ${pages}`;
     els.prevPage.disabled = state.page === 0;
@@ -797,9 +821,19 @@
     els.clearFilters.hidden = !hasActiveFilters();
   }
 
+  // Thin progress bar under the toolbar; the eye button shows or hides all depending on it.
   function updateRevealedCount() {
+    const total = state.view.length;
     const revealed = state.view.reduce((n, item) => n + (state.revealed.has(item.id) ? 1 : 0), 0);
-    els.revealedCount.textContent = state.view.length ? `${revealed} / ${state.view.length} revealed` : '';
+    els.revealedBar.style.width = total ? `${(100 * revealed) / total}%` : '0';
+    const bar = els.revealedBar.parentElement;
+    bar.setAttribute('aria-valuemax', String(total));
+    bar.setAttribute('aria-valuenow', String(revealed));
+    bar.title = `${revealed} / ${total} revealed`;
+    const allShown = total > 0 && revealed === total;
+    els.toggleAll.textContent = allShown ? '○' : '◉';
+    els.toggleAll.title = allShown ? 'Hide all answers' : 'Show all answers';
+    els.toggleAll.setAttribute('aria-label', els.toggleAll.title);
   }
 
   function toggleChip(group, value) {
@@ -893,6 +927,107 @@
     }
     state.page = 0;
     renderList();
+  }
+
+  // ---------- Study mode: one card at a time ----------
+  // Goes through a copy of the current list in its current order. The answers ("knew it" / "didn't know")
+  // only live for the session: at the end, the missed cards can be studied again.
+  const study = { items: [], index: 0, revealed: false, missed: [], knew: 0 };
+
+  function startStudy(items) {
+    if (!items.length) return;
+    Object.assign(study, { items: [...items], index: 0, revealed: false, missed: [], knew: 0 });
+    els.studyView.hidden = false;
+    document.body.classList.add('studying');
+    renderStudy();
+    // Keys go to the study view, not to the list behind it.
+    els.studyView.focus();
+  }
+
+  function closeStudy() {
+    els.studyView.hidden = true;
+    document.body.classList.remove('studying');
+    els.study.focus();
+  }
+
+  function studyButton(label, key, onClick, cls = '') {
+    const button = el('button', { type: 'button', class: cls }, label, el('kbd', {}, key));
+    button.addEventListener('click', onClick);
+    return button;
+  }
+
+  function renderStudy() {
+    const total = study.items.length;
+    els.studyBar.style.width = `${(100 * study.index) / total}%`;
+    if (study.index >= total) {
+      els.studyProgress.textContent = `Done: ${total} card${total > 1 ? 's' : ''}`;
+      els.studyStage.replaceChildren(el('div', { class: 'study-summary' },
+        el('div', { class: 'study-score' }, `${study.knew} / ${total}`),
+        el('p', {}, study.missed.length ? `${study.missed.length} to review again.` : 'You knew them all.')));
+      const missed = [...study.missed];
+      els.studyButtons.replaceChildren(
+        missed.length ? studyButton(`Study the ${missed.length} missed`, 'Space', () => startStudy(missed), 'primary') : null,
+        studyButton('Start again', 'R', () => startStudy(study.items)),
+        studyButton('Close', 'Esc', closeStudy));
+      return;
+    }
+    const item = study.items[study.index];
+    els.studyProgress.textContent = `${study.index + 1} / ${total}`;
+    const content = el('div', { class: 'answer-content' });
+    const voice = () => state.voice.get(item.id) ?? 0;
+    const renderAnswer = () => content.replaceChildren(...buildAnswer(item, voice(), {
+      onPlay: () => playAudio(item.audios[voice()].url),
+      onSwitch: () => {
+        state.voice.set(item.id, (voice() + 1) % item.audios.length);
+        renderAnswer();
+        playAudio(item.audios[voice()].url);
+      },
+    }));
+    renderAnswer();
+    const card = el('div', { class: `study-card type-${item.type}${study.revealed ? ' revealed' : ''}` },
+      el('div', { class: 'glyph-tile', title: TYPE_LABEL[item.type] }, buildGlyph(item)),
+      el('div', { class: 'study-answer' }, buildMeta(item), content));
+    card.addEventListener('click', (e) => {
+      if (!study.revealed && !e.target.closest('button')) revealStudy();
+    });
+    els.studyStage.replaceChildren(card);
+    els.studyButtons.replaceChildren(...(study.revealed
+      ? [studyButton('Didn’t know', '1', () => answerStudy(false), 'miss'),
+        studyButton('Knew it', '2', () => answerStudy(true), 'knew')]
+      : [studyButton('Show answer', 'Space', revealStudy, 'primary')]));
+  }
+
+  function revealStudy() {
+    study.revealed = true;
+    renderStudy();
+    els.studyView.focus();
+    const item = study.items[study.index];
+    if (els.autoplay.checked && item.audios.length) playAudio(item.audios[state.voice.get(item.id) ?? 0].url);
+  }
+
+  function answerStudy(knew) {
+    const item = study.items[study.index];
+    if (knew) study.knew += 1;
+    else study.missed.push(item);
+    study.index += 1;
+    study.revealed = false;
+    renderStudy();
+    els.studyView.focus();
+  }
+
+  function studyKey(e) {
+    const done = study.index >= study.items.length;
+    let handled = true;
+    if (e.key === 'Escape') closeStudy();
+    // Space/Enter on a focused study button presses that button.
+    else if (e.target.closest?.('#study-view button') && (e.key === ' ' || e.key === 'Enter')) handled = false;
+    else if (done && (e.key === ' ' || e.key === 'Enter') && study.missed.length) startStudy([...study.missed]);
+    else if (done && (e.key === 'r' || e.key === 'R')) startStudy(study.items);
+    else if (!done && !study.revealed && (e.key === ' ' || e.key === 'Enter')) revealStudy();
+    else if (!done && study.revealed && (e.key === '1' || e.key === 'ArrowLeft')) answerStudy(false);
+    else if (!done && study.revealed && (e.key === '2' || e.key === 'ArrowRight')) answerStudy(true);
+    else handled = false;
+    if (handled) e.preventDefault();
   }
 
   // ---------- Loading ----------
@@ -1044,8 +1179,37 @@
   });
 
   els.shuffle.addEventListener('click', shuffleView);
-  els.showAll.addEventListener('click', () => setAllRevealed(true));
-  els.hideAll.addEventListener('click', () => setAllRevealed(false));
+  els.toggleAll.addEventListener('click', () => {
+    setAllRevealed(!(state.view.length && state.view.every((item) => state.revealed.has(item.id))));
+  });
+  els.density.addEventListener('click', () => {
+    setCompact(!document.body.classList.contains('compact'));
+    savePrefs();
+  });
+  els.study.addEventListener('click', () => startStudy(state.view));
+  els.studyClose.addEventListener('click', closeStudy);
+
+  // ---------- Keyboard ----------
+  // Up/Down (or k/j) move between cards; Space/Enter on a card reveals it (handled on the card).
+  document.addEventListener('keydown', (e) => {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (!els.studyView.hidden) {
+      studyKey(e);
+      return;
+    }
+    if (e.target.closest?.('input, select, textarea, summary')) return;
+    const down = e.key === 'ArrowDown' || e.key === 'j';
+    const up = e.key === 'ArrowUp' || e.key === 'k';
+    if (!down && !up) return;
+    const cards = [...els.list.querySelectorAll('.card')];
+    if (!cards.length) return;
+    const index = cards.indexOf(document.activeElement?.closest?.('.card'));
+    const next = index === -1 ? (down ? 0 : cards.length - 1) : index + (down ? 1 : -1);
+    if (next < 0 || next >= cards.length) return;
+    e.preventDefault();
+    cards[next].focus({ preventScroll: true });
+    cards[next].scrollIntoView({ block: 'nearest' });
+  });
 
   // ---------- Startup ----------
   function init() {

@@ -5,6 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Quick review list for WaniKani radicals, kanji and vocabulary, with meanings and readings hidden until you click.">
   <title>WaniKani Quick Review</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <!-- One Japanese font on every device; the system fonts stay as fallbacks. -->
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;600&display=swap">
   <link rel="stylesheet" href="styles.css">
   <script>
     // Apply the saved theme before first render to avoid a light/dark flash
@@ -18,10 +22,10 @@
 </head>
 <body>
   <header class="topbar">
-    <h1>WaniKani Quick Review</h1>
+    <h1>WK Quick Review</h1>
     <div class="topbar-actions">
-      <button id="theme" class="ghost" type="button" aria-label="Change theme">Theme: auto</button>
-      <button id="logout" class="ghost" type="button" hidden>Change token</button>
+      <button id="theme" class="icon-btn" type="button" aria-label="Theme: auto" title="Theme: auto"></button>
+      <button id="logout" class="ghost small" type="button" hidden>Sign out</button>
     </div>
   </header>
 
@@ -77,20 +81,26 @@
 
     <!-- Results -->
     <section id="results" hidden>
+      <!-- Sticky bar: count, revealed progress, actions and quick filters, in as little height as possible. -->
       <div class="toolbar">
-        <div class="toolbar-info">
-          <span id="count" aria-live="polite"></span>
-          <span id="revealed-count" class="revealed-count"></span>
+        <div class="toolbar-row">
+          <span id="count" class="count" aria-live="polite"></span>
+          <div class="actions">
+            <button id="study" class="primary small" type="button" title="Study one card at a time">Study</button>
+            <button id="shuffle" class="icon-btn" type="button" title="Shuffle" aria-label="Shuffle">⤮</button>
+            <button id="toggle-all" class="icon-btn" type="button" title="Show all answers" aria-label="Show all answers">◉</button>
+            <button id="density" class="icon-btn" type="button" title="Compact view" aria-label="Compact view" aria-pressed="false">☰</button>
+          </div>
         </div>
-        <div class="actions">
-          <button id="shuffle" type="button">Shuffle</button>
-          <button id="show-all" type="button">Show all</button>
-          <button id="hide-all" type="button">Hide all</button>
+        <div class="progress" role="progressbar" aria-label="Revealed cards" aria-valuemin="0" aria-valuenow="0">
+          <div id="revealed-bar" class="progress-fill"></div>
+        </div>
+        <div class="quick-row" role="group" aria-label="Quick filters">
+          <button id="clear-filters" class="quick clear" type="button" hidden>✕ Clear</button>
+          <div id="quick-mistakes" class="quick-group" role="group" aria-label="Mistakes"></div>
+          <div id="quick-jlpt" class="quick-group" role="group" aria-label="JLPT"></div>
         </div>
       </div>
-      <div id="quick-mistakes" class="quick-filters" role="group" aria-label="Quick mistake filters"></div>
-      <div id="quick-jlpt" class="quick-filters" role="group" aria-label="Quick JLPT filters"></div>
-      <button id="clear-filters" class="ghost clear-filters" type="button" hidden>Clear all filters</button>
       <ol id="list" class="list"></ol>
       <nav id="pager" class="pager" aria-label="Pages" hidden>
         <button id="prev-page" type="button">← Previous</button>
@@ -100,7 +110,19 @@
     </section>
 
     <p id="message" class="status" role="status" aria-live="polite"></p>
+    <p class="hint keys-hint">Keys: ↑ ↓ move between cards, Space reveals. In Study: Space reveals, 1 or ← “didn’t know”, 2 or → “knew it”, Esc closes.</p>
   </main>
+
+  <!-- Study mode: one card at a time over the current list. -->
+  <div id="study-view" class="study" role="dialog" aria-modal="true" aria-label="Study" tabindex="-1" hidden>
+    <div class="study-top">
+      <span id="study-progress" class="study-progress"></span>
+      <button id="study-close" class="icon-btn" type="button" title="Close (Esc)" aria-label="Close">✕</button>
+    </div>
+    <div class="progress"><div id="study-bar" class="progress-fill"></div></div>
+    <div id="study-stage" class="study-stage"></div>
+    <div id="study-buttons" class="study-buttons"></div>
+  </div>
 
   <script src="app.js"></script>
 </body>

@@ -6,7 +6,7 @@ Each item shows its Japanese text on the left. The **meaning** and **reading** s
 ## How it works
 
 - **Sign in**: paste your WaniKani API token (*Settings → API Tokens*). A read-only token is enough.
-- **Storage**: the token is kept in your browser's `localStorage`. It is never written into the code and only sent to `api.wanikani.com`. *Change token* clears it.
+- **Storage**: the token is kept in your browser's `localStorage`. It is never written into the code and only sent to `api.wanikani.com`. *Sign out* clears it.
 - **Filters**: every filter is a group of chips, applied as soon as it changes.
   - Chips of one group add up (N5 + N4 shows both levels); groups combine (N5 + N4 *and* missed in the last 7 days).
     No chip selected in a group means no constraint. Each chip shows how many items it matches with the other filters.
@@ -18,10 +18,17 @@ Each item shows its Japanese text on the left. The **meaning** and **reading** s
   - Preferences of earlier versions (one value per filter) are converted to chips.
 - **Cache**: subjects and assignments of every level are kept in the browser (IndexedDB). After the first load, the list
   is shown at once from the cache, and only records changed since the last visit are requested (`updated_after`), so a
-  visit usually costs three small API requests. Changing the type or level range needs no request. *Change token* clears it.
+  visit usually costs three small API requests. Changing the type or level range needs no request. *Sign out* clears it.
 - **Pages**: 1,000 items per page, with previous/next navigation.
 - **Audio (vocabulary only)**: revealing a vocabulary card plays its pronunciation automatically (toggle *Autoplay vocabulary audio when revealed*). *▶ Play* replays it, and *⇄ Other voice* switches voice actor when WaniKani provides more than one. Audio is only played on a click, never when the list is re-rendered, and clicking the audio buttons does not hide the card.
-- **Actions**: *Shuffle*, *Show all*, *Hide all* (applies to the whole filtered list).
+- **Toolbar** (stays at the top): item count, a thin bar for revealed cards, *Study*, shuffle, show/hide all, compact view,
+  and the quick mistake and JLPT chips on one line.
+- **Cards**: one column on phones, two or three on wider screens; a compact view shows one short row per card.
+  Japanese text uses Noto Sans JP on every device.
+- **Keyboard**: ↑/↓ (or k/j) move between cards, Space or Enter reveals.
+- **Study mode**: one card at a time over the current list (in its current order). Space reveals; *Didn’t know* (1 or ←)
+  and *Knew it* (2 or →) move on. At the end, the missed cards can be studied again. Answers are only kept for the
+  session, nothing is sent to WaniKani.
 - **Theme**: auto (follows the system), light or dark.
 
 ### Mistake definitions
