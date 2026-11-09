@@ -48,13 +48,16 @@ WaniKani does not provide JLPT levels or frequency, so they come from `data/japa
 
 | Filter | Kanji | Vocabulary |
 | --- | --- | --- |
-| JLPT | [kanji-data](https://github.com/davidluzgouveia/kanji-data) (MIT), from Jonathan Waller's lists | [open-anki-jlpt-decks](https://github.com/jamsinclair/open-anki-jlpt-decks), from Jonathan Waller's lists |
+| JLPT | [kanji-data](https://github.com/davidluzgouveia/kanji-data) (MIT), from Jonathan Waller's lists (same levels as [wkstats](https://www.wkstats.com/items/jlpt)) | Jonathan Waller's lists, via [yomitan-jlpt-vocab](https://github.com/stephenmk/yomitan-jlpt-vocab) (linked to JMdict entries) and [open-anki-jlpt-decks](https://github.com/jamsinclair/open-anki-jlpt-decks) (keeps affixes such as 〜円) |
 | Frequency | Newspaper rank from KANJIDIC (top 2,500 kanji) | JMdict newspaper frequency bands (`nf01`–`nf48`, 500 words each) |
 | School grade | KANJIDIC grade: 1–6, secondary school, jinmeiyō | Grade of the word's hardest kanji |
 | Word type | – | WaniKani parts of speech |
 
 The JLPT has published no official lists since 2010; Jonathan Waller's lists (tanos.co.uk) are the usual reference.
-A word matches only when its WaniKani spelling is in the source, so some words have no JLPT level or frequency.
+A word gets a level when its WaniKani spelling **and** reading match a listed word (日 read ひ is N4, not the N5 of 日 read
+にち). When nothing matches exactly, the level of the same JMdict entry is used, so a word listed only in kana (おととし)
+still gives its level to the kanji spelling (一昨年). Frequency also comes from the JMdict entry with the matching reading.
+About 3,800 of 6,800 WaniKani words are on the lists.
 KANJIDIC and JMdict are © EDRDG, used under CC BY-SA 4.0.
 
 To rebuild the file (the token is read from the environment and only sent to `api.wanikani.com`):
