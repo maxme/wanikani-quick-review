@@ -992,16 +992,29 @@
   // ---------- Study mode: one card at a time ----------
   // Goes through a copy of the current list in its current order. The answers ("knew it" / "didn't know")
   // only live for the session: at the end, the missed cards can be studied again.
-  const study = { items: [], index: 0, revealed: false, missed: [], knew: 0 };
+  // stopped: the session was left before the end; its results are shown for the cards answered so far.
+  const study = { items: [], index: 0, revealed: false, missed: [], knew: 0, stopped: false };
+  const studyDone = () => study.stopped || study.index >= study.items.length;
 
   function startStudy(items) {
     if (!items.length) return;
-    Object.assign(study, { items: [...items], index: 0, revealed: false, missed: [], knew: 0 });
+    Object.assign(study, { items: [...items], index: 0, revealed: false, missed: [], knew: 0, stopped: false });
     els.studyView.hidden = false;
     document.body.classList.add('studying');
     renderStudy();
     // Keys go to the study view, not to the list behind it.
     els.studyView.focus();
+  }
+
+  // ✕ or Esc during a session: show the results so far if any card was answered; on the results, close.
+  function leaveStudy() {
+    if (!studyDone() && study.index > 0) {
+      study.stopped = true;
+      renderStudy();
+      els.studyView.focus();
+    } else {
+      closeStudy();
+    }
   }
 
   function closeStudy() {
@@ -1019,10 +1032,13 @@
   function renderStudy() {
     const total = study.items.length;
     els.studyBar.style.width = `${(100 * study.index) / total}%`;
-    if (study.index >= total) {
-      els.studyProgress.textContent = `Done: ${total} card${total > 1 ? 's' : ''}`;
+    if (studyDone()) {
+      const answered = study.index;
+      els.studyProgress.textContent = study.stopped
+        ? `Stopped after ${answered} of ${total} cards`
+        : `Done: ${total} card${total > 1 ? 's' : ''}`;
       els.studyStage.replaceChildren(el('div', { class: 'study-summary' },
-        el('div', { class: 'study-score' }, `${study.knew} / ${total}`),
+        el('div', { class: 'study-score' }, `${study.knew} / ${answered}`),
         el('p', {}, study.missed.length ? `${study.missed.length} missed:` : 'You knew them all.'),
         study.missed.length ? el('ol', { class: 'list study-missed' }, ...study.missed.map(buildMissedRow)) : null));
       const missed = [...study.missed];
@@ -1095,9 +1111,9 @@
   }
 
   function studyKey(e) {
-    const done = study.index >= study.items.length;
+    const done = studyDone();
     let handled = true;
-    if (e.key === 'Escape') closeStudy();
+    if (e.key === 'Escape') leaveStudy();
     // Space/Enter on a focused study button presses that button.
     else if (e.target.closest?.('#study-view button') && (e.key === ' ' || e.key === 'Enter')) handled = false;
     else if (done && (e.key === ' ' || e.key === 'Enter') && study.missed.length) startStudy([...study.missed]);
@@ -1275,7 +1291,7 @@
     savePrefs();
   });
   els.study.addEventListener('click', () => startStudy(state.view));
-  els.studyClose.addEventListener('click', closeStudy);
+  els.studyClose.addEventListener('click', leaveStudy);
 
   // ---------- Keyboard ----------
   // Up/Down (or k/j) move between cards; Space/Enter on a card reveals it (handled on the card).
