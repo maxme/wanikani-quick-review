@@ -25,6 +25,9 @@ Each item shows its Japanese text on the left. The **meaning** and **reading** s
   and the quick mistake and JLPT chips on one line.
 - **Cards**: one column on phones, two or three on wider screens; a compact view shows one short row per card.
   Japanese text uses Noto Sans JP on every device.
+- **Order** (⇅ in the toolbar): level (WaniKani order), most misses, hardest (lowest % correct), recently missed,
+  JLPT N5 → N1, most frequent, SRS stage, next review, random. The shuffle button draws a new random order.
+  Cards with misses also show their overall % correct.
 - **Keyboard**: ↑/↓ (or k/j) move between cards, Space or Enter reveals.
 - **Study mode**: one card at a time over the current list (in its current order). Space, ← or → reveals the answer; then
   *Didn’t know* (1 or ←) and *Knew it* (2 or →) move on. At the end, the missed cards are listed with their answers

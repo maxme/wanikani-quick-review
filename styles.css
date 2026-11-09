@@ -717,3 +717,41 @@ kbd {
   .keys-hint, kbd { display: none; }
 }
 .study:focus { outline: none; }
+
+/* Order picker: looks like a pill button, the native select (invisible) sits on top so it opens the system picker. */
+label.sort {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  height: 2.1rem;
+  min-width: 2.1rem;
+  justify-content: center;
+  padding: 0 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 0.85rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+label.sort:hover, label.sort:focus-within { border-color: var(--accent); }
+label.sort.active { border-color: var(--accent); color: var(--accent); }
+
+label.sort select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  opacity: 0;
+  cursor: pointer;
+  /* 16px avoids the zoom-in of iOS on focus. */
+  font-size: 16px;
+}
+
+/* On phones, only the icon: the toolbar row stays on one line. */
+@media (max-width: 560px) {
+  label.sort { padding: 0; }
+  .sort-label { display: none; }
+}

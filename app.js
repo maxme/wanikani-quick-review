@@ -113,6 +113,31 @@
       test: (item, v) => item.partsOfSpeech.some((p) => POS_GROUPS[v].includes(p)),
     },
   ];
+  // ---------- Sort orders ----------
+  // Ascending comparison where null/undefined always goes last.
+  const asc = (x, y) => (x === y ? 0 : x == null ? 1 : y == null ? -1 : x - y);
+  // Descending, null/undefined still last.
+  const desc = (x, y) => asc(x == null ? null : -x, y == null ? null : -y);
+  const lastMissAt = (item) => (item.history.lastReviewMissed ? item.history.lastReviewAt : null);
+  // Each order ties back to the WaniKani order (level, type, lesson position) through a stable sort.
+  const SORTS = {
+    level: { label: 'Level', compare: null },
+    misses: { label: 'Most misses', compare: (a, b) => b.history.wrong - a.history.wrong },
+    difficulty: {
+      label: 'Hardest (lowest % correct)',
+      compare: (a, b) => asc(a.history.percentCorrect, b.history.percentCorrect) || b.history.wrong - a.history.wrong,
+    },
+    recent: { label: 'Recently missed', compare: (a, b) => desc(lastMissAt(a), lastMissAt(b)) },
+    jlpt: { label: 'JLPT (N5 → N1)', compare: (a, b) => desc(a.jlpt, b.jlpt) },
+    frequency: { label: 'Most frequent', compare: (a, b) => asc(a.frequency, b.frequency) },
+    srs: { label: 'SRS stage (Apprentice first)', compare: (a, b) => asc(a.srsStage || null, b.srsStage || null) },
+    due: {
+      label: 'Next review',
+      compare: (a, b) => asc(a.availableAt && Date.parse(a.availableAt), b.availableAt && Date.parse(b.availableAt)),
+    },
+    random: { label: 'Random', compare: null },
+  };
+
   const GROUP_BY_KEY = Object.fromEntries(FILTER_GROUPS.map((g) => [g.key, g]));
   const emptyFilters = () => Object.fromEntries(FILTER_GROUPS.map((g) => [g.key, new Set()]));
   const JAPANESE_DATA_URL = 'data/japanese.json';
@@ -141,6 +166,8 @@
     quickMistakes: $('#quick-mistakes'),
     quickJlpt: $('#quick-jlpt'),
     clearFilters: $('#clear-filters'),
+    sort: $('#sort'),
+    sortLabel: $('#sort-label'),
     autoplay: $('#autoplay'),
     results: $('#results'),
     count: $('#count'),
@@ -198,6 +225,7 @@
       filters: Object.fromEntries(Object.entries(state.filters).map(([key, set]) => [key, [...set]])),
       autoplay: els.autoplay.checked,
       compact: document.body.classList.contains('compact'),
+      sort: els.sort.value,
     }));
   }
 
@@ -304,6 +332,34 @@
     }
     if (typeof prefs.autoplay === 'boolean') els.autoplay.checked = prefs.autoplay;
     setCompact(prefs.compact === true);
+    if (SORTS[prefs.sort]) els.sort.value = prefs.sort;
+    updateSortLabel();
+  }
+
+  function populateSorts() {
+    for (const [value, { label }] of Object.entries(SORTS)) els.sort.append(el('option', { value }, label));
+  }
+
+  function updateSortLabel() {
+    const { label } = SORTS[els.sort.value];
+    els.sortLabel.textContent = label.replace(/ \(.*\)$/, '');
+    const wrapper = els.sort.parentElement;
+    wrapper.title = `Order: ${label}`;
+    wrapper.classList.toggle('active', els.sort.value !== 'level');
+  }
+
+  // Sorts the filtered list in place by the chosen order.
+  function sortView() {
+    const order = els.sort.value;
+    if (order === 'random') {
+      const arr = state.view;
+      for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+      }
+    } else if (SORTS[order].compare) {
+      state.view.sort(SORTS[order].compare);
+    }
   }
 
   function setCompact(on) {
@@ -717,6 +773,8 @@
       item.jlpt ? el('span', { class: 'jlpt', title: `JLPT N${item.jlpt}` }, `N${item.jlpt}`) : null,
       item.srsStage >= 1 ? el('span', {}, SRS_LABEL[item.srsStage]) : null,
       wrong > 0 ? el('span', { title: `${wrong} miss${wrong > 1 ? 'es' : ''} in total` }, `✗ ${wrong}`) : null,
+      wrong > 0 && item.history.percentCorrect !== null
+        ? el('span', { title: 'Correct answers overall' }, `${item.history.percentCorrect}%`) : null,
       item.leech ? el('span', { class: 'leech' }, 'Leech') : null,
     ].filter(Boolean);
     return el('div', { class: 'meta' }, ...parts);
@@ -893,6 +951,7 @@
     // For each item, the active groups it fails.
     const failed = inLevels.map((item) => active.filter((g) => !matchesGroup(item, g, state.filters[g.key], now)));
     state.view = inLevels.filter((_, i) => failed[i].length === 0);
+    sortView();
     if (!keepPage) state.page = 0;
 
     const counts = new Map();
@@ -919,15 +978,16 @@
     renderList();
   }
 
+  // The shuffle button switches to the random order and draws a new one each time.
   function shuffleView() {
-    const arr = state.view;
-    for (let i = arr.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [arr[i], arr[j]] = [arr[j], arr[i]];
-    }
+    els.sort.value = 'random';
+    updateSortLabel();
+    savePrefs();
+    sortView();
     state.page = 0;
     renderList();
   }
+
 
   // ---------- Study mode: one card at a time ----------
   // Goes through a copy of the current list in its current order. The answers ("knew it" / "didn't know")
@@ -1199,6 +1259,14 @@
   });
 
   els.shuffle.addEventListener('click', shuffleView);
+  els.sort.addEventListener('change', () => {
+    updateSortLabel();
+    savePrefs();
+    if (!state.raw) return;
+    // Re-filtering starts from the WaniKani order, then applies the new one.
+    applyFilters();
+    window.scrollTo({ top: 0 });
+  });
   els.toggleAll.addEventListener('click', () => {
     setAllRevealed(!(state.view.length && state.view.every((item) => state.revealed.has(item.id))));
   });
@@ -1236,6 +1304,7 @@
     storageRemove(OLD_STORAGE_STATS);
     applyTheme(currentTheme());
     populateLevels();
+    populateSorts();
     buildFilterGroups();
     restorePrefs();
     renderChips(null);
