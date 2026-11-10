@@ -201,7 +201,6 @@
     reverse: $('#reverse'),
     sortLabel: $('#sort-label'),
     autoplay: $('#autoplay'),
-    timed: $('#timed'),
     results: $('#results'),
     count: $('#count'),
     list: $('#list'),
@@ -222,6 +221,7 @@
     studyClose: $('#study-close'),
     studyPause: $('#study-pause'),
     studyTimer: $('#study-timer'),
+    studyTimed: $('#study-timed'),
     resume: $('#study-resume'),
     resumeText: $('#resume-text'),
     resumeContinue: $('#resume-continue'),
@@ -263,7 +263,7 @@
       levelMax: Number(els.levelMax.value),
       filters: Object.fromEntries(Object.entries(state.filters).map(([key, set]) => [key, [...set]])),
       autoplay: els.autoplay.checked,
-      timed: els.timed.checked,
+      timed: study.timed,
       compact: document.body.classList.contains('compact'),
       sort: els.sort.value,
       reversed: state.reversed,
@@ -372,7 +372,7 @@
       }
     }
     if (typeof prefs.autoplay === 'boolean') els.autoplay.checked = prefs.autoplay;
-    if (typeof prefs.timed === 'boolean') els.timed.checked = prefs.timed;
+    if (typeof prefs.timed === 'boolean') study.timed = prefs.timed;
     setCompact(prefs.compact === true);
     if (SORTS[prefs.sort]) els.sort.value = prefs.sort;
     state.reversed = prefs.reversed === true;
@@ -1155,7 +1155,8 @@
 
   function startStudy(items) {
     if (!items.length) return;
-    Object.assign(study, { items: [...items], all: [...items], index: 0, revealed: false, missed: [], knew: 0, answered: 0, stopped: false, size: items.length, activeMs: 0, cardMs: 0, cardStart: null, timed: els.timed.checked, timedOut: 0 });
+    // The timed choice is kept from the last study: it is set from the study view.
+    Object.assign(study, { items: [...items], all: [...items], index: 0, revealed: false, missed: [], knew: 0, answered: 0, stopped: false, size: items.length, activeMs: 0, cardMs: 0, cardStart: null, timedOut: 0 });
     showStudyView();
   }
 
@@ -1208,7 +1209,6 @@
       activeMs: study.activeMs,
       missed: study.missed.map((item) => item.id),
       remaining: study.items.slice(study.index).map((item) => item.id),
-      timed: study.timed,
       timedOut: study.timedOut,
     }));
     closeStudy();
@@ -1228,8 +1228,22 @@
       setMessage('The paused study has no cards left.');
       return;
     }
-    Object.assign(study, { items: remaining, all: null, index: 0, revealed: false, missed, knew: saved.knew, answered: saved.answered, stopped: false, size: saved.answered + remaining.length, activeMs: saved.activeMs, cardMs: 0, cardStart: null, timed: saved.timed === true, timedOut: saved.timedOut ?? 0 });
+    Object.assign(study, { items: remaining, all: null, index: 0, revealed: false, missed, knew: saved.knew, answered: saved.answered, stopped: false, size: saved.answered + remaining.length, activeMs: saved.activeMs, cardMs: 0, cardStart: null, timedOut: saved.timedOut ?? 0 });
     showStudyView();
+  }
+
+  // The timed choice lives in the study view and is remembered in the preferences. Turning it on starts
+  // the countdown of the card on screen from 10 s.
+  function toggleTimed() {
+    study.timed = !study.timed;
+    if (study.timed && study.cardStart !== null) {
+      study.cardMs = 0;
+      study.cardStart = performance.now();
+    }
+    savePrefs();
+    renderStudy();
+    // Keeps Space on the card, not on this button.
+    els.studyView.focus();
   }
 
   function discardPausedStudy() {
@@ -1281,6 +1295,8 @@
     els.studyBar.style.width = `${(100 * study.answered) / study.size}%`;
     els.studyPause.hidden = studyDone();
     els.studyTimer.hidden = studyDone() || !study.timed;
+    els.studyTimed.hidden = studyDone();
+    els.studyTimed.setAttribute('aria-pressed', String(study.timed));
     if (studyDone()) {
       const left = study.size - study.answered;
       const average = study.answered ? study.activeMs / study.answered : 0;
@@ -1382,6 +1398,7 @@
     // Space/Enter on a focused study button presses that button.
     else if (e.target.closest?.('#study-view button') && (e.key === ' ' || e.key === 'Enter')) handled = false;
     else if ((e.key === 'p' || e.key === 'P') && study.index < study.items.length) pauseStudy();
+    else if ((e.key === 't' || e.key === 'T') && !done) toggleTimed();
     else if (done && (e.key === ' ' || e.key === 'Enter') && study.missed.length) startStudy([...study.missed]);
     else if (done && (e.key === 'r' || e.key === 'R') && study.all) startStudy(study.all);
     // Before the answer is shown, the answer keys (←/→, 1/2) also just show it; pressed again, they answer.
@@ -1525,7 +1542,7 @@
   });
 
   els.autoplay.addEventListener('change', savePrefs);
-  els.timed.addEventListener('change', savePrefs);
+  els.studyTimed.addEventListener('click', toggleTimed);
 
   els.prevPage.addEventListener('click', () => {
     state.page -= 1;

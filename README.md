@@ -46,7 +46,8 @@ next review or random, and a button to reverse it.
 Reveal with Space, ← or →, then answer *Didn't know* (1 or ←) or *Knew it* (2 or →).
 The results show your score, the time spent, and the missed cards with their answers, ready to be studied again;
 leaving early shows the results so far. A study can be paused and resumed later in the same browser.
-With **Timed study** (filters panel), each card gets 10 seconds; a card left unanswered counts as *Didn't know*.
+With **Timed** (a button in the study view, or T), each card gets 10 seconds; a card left unanswered counts as *Didn't know*.
+The choice is remembered. It is only available during a study.
 These answers are only for you: nothing is sent to WaniKani.
 
 ## Privacy and API use
