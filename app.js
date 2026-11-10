@@ -817,11 +817,61 @@
           el('span', { class: 'jp', lang: 'ja' }, ...joinSpans(group.items, '、')),
         );
       });
+      // Vocabulary has WaniKani audio; a kanji gets its primary reading read aloud by the browser.
+      const primary = item.type === 'kanji' ? primaryReading(item) : null;
       nodes.push(el('div', { class: 'reading-line' },
         el('div', { class: 'readings' }, ...groups),
-        item.audios.length ? buildAudioButtons(item, voiceIndex, handlers) : null));
+        item.audios.length ? buildAudioButtons(item, voiceIndex, handlers)
+          : primary ? buildSpeakButton(primary) : null));
     }
     return nodes;
+  }
+
+  // The reading WaniKani marks as primary (on’yomi or kun’yomi, whichever it is), with its group label.
+  function primaryReading(item) {
+    for (const group of item.readings) {
+      const primary = group.items.find((reading) => reading.primary);
+      if (primary) return { text: primary.text, label: group.label };
+    }
+    return null;
+  }
+
+  function buildSpeakButton({ text, label }) {
+    const button = el('button', {
+      type: 'button',
+      class: 'audio-btn speak-btn',
+      title: `Read aloud: ${text}${label ? ` (${label})` : ''}`,
+      'aria-label': `Read aloud: ${text}`,
+    }, '🔊');
+    button.addEventListener('click', (e) => {
+      e.stopPropagation();
+      speakReading(text);
+    });
+    return button;
+  }
+
+  // Reads a kanji reading with the browser's speech synthesis, using a Japanese voice when the device has one.
+  function speakReading(text) {
+    const unavailable = 'Read-aloud is not available in this browser.';
+    if (!('speechSynthesis' in window) || !window.SpeechSynthesisUtterance) {
+      setMessage(unavailable, true);
+      return;
+    }
+    try {
+      const voices = window.speechSynthesis.getVoices();
+      const japanese = voices.find((voice) => voice.lang?.toLowerCase().startsWith('ja'));
+      if (voices.length && !japanese) {
+        setMessage('No Japanese voice on this device: install one to hear readings.', true);
+        return;
+      }
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = 'ja-JP';
+      if (japanese) utterance.voice = japanese;
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(utterance);
+    } catch {
+      setMessage(unavailable, true);
+    }
   }
 
   // Small grey line: level, JLPT, SRS stage, misses. The type is given by the card colour (and the tile label).

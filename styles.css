@@ -578,6 +578,14 @@ button:disabled { opacity: 0.5; cursor: progress; }
 
 .audio-btn.play-btn:hover { filter: brightness(1.08); }
 
+/* A kanji's primary reading, read aloud by the browser: outlined, since WaniKani has no audio for kanji. */
+.audio-btn.speak-btn {
+  background: var(--panel);
+  border-color: var(--type-color);
+  color: var(--type-color);
+  font-size: 0.9rem;
+}
+
 @media (max-width: 480px) {
   .card { grid-template-columns: 6.5rem 1fr; }
   .glyph-tile { min-height: 4.75rem; padding: 0.4rem; }

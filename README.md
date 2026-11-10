@@ -16,6 +16,7 @@ API and never writes to it: your reviews and SRS progress are left untouched.
 **Review list**
 - Meaning and reading stay hidden until you tap a card (tap again to hide them). Radicals have no reading.
 - Vocabulary audio plays when a card is revealed (can be turned off), with a button to replay it or switch voice actor.
+- Kanji have no audio on WaniKani: a 🔊 button reads their primary reading (on’yomi or kun’yomi, whichever WaniKani marks as primary) with the browser’s speech synthesis, in Japanese when the device has a Japanese voice.
 - Each card shows its level, JLPT level, SRS stage and, once missed, its number of misses and overall % correct.
 - Compact view, one to three columns depending on the screen, light and dark themes, 1,000 items per page.
 - Keyboard: ↑/↓ (or k/j) to move between cards, Space or Enter to reveal.
