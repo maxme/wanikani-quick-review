@@ -24,8 +24,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
+      # Publish only the files the site uses (not the README, scripts or workflows).
+      - name: Collect the site files
+        run: |
+          mkdir _site
+          cp -r index.html app.js styles.css favicon.svg apple-touch-icon.png data _site/
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: .
+          path: _site
       - id: deployment
         uses: actions/deploy-pages@v4

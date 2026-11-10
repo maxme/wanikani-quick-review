@@ -1,114 +1,138 @@
 # WaniKani Quick Review
 
-A small static web app to quickly review your WaniKani radicals, kanji and vocabulary.
-Each item shows its Japanese text on the left. The **meaning** and **reading** stay hidden until you click the card (click again to hide them).
+A fast, no-install review list for your [WaniKani](https://www.wanikani.com/) radicals, kanji and vocabulary.
+Each card shows the Japanese; tap it to reveal the meaning and reading. Filter by your mistakes, leeches, SRS stage,
+JLPT level or frequency, then go through the list or study it one card at a time.
 
-## How it works
+**Open it: <https://maxme.github.io/wanikani-quick-review/>** — all you need is a WaniKani API token.
 
-- **Sign in**: paste your WaniKani API token (*Settings → API Tokens*). A read-only token is enough.
-- **Storage**: the token is kept in your browser's `localStorage`. It is never written into the code and only sent to `api.wanikani.com`. *Sign out* clears it.
-- **Filters**: every filter is a group of chips, applied as soon as it changes.
-  - Chips of one group add up (N5 + N4 shows both levels); groups combine (N5 + N4 *and* missed in the last 7 days).
-    No chip selected in a group means no constraint. Each chip shows how many items it matches with the other filters.
-  - Groups: type, SRS stage (not started, apprentice, guru, master, enlightened, burned), reviews available now, mistakes
-    (missed in the last 24 h / 48 h / 7 days, leeches, never missed), JLPT N5–N1, frequency (disjoint bands, so they add up
-    to a top N), school grade, word type. Plus the level range.
-  - Mistakes and JLPT chips are also shown above the list, with *Clear all filters*.
-  - JLPT, frequency, school grade and word type leave radicals out once a chip is selected. See below.
-  - Preferences of earlier versions (one value per filter) are converted to chips.
-- **Cache**: subjects and assignments of every level are kept in the browser (IndexedDB). After the first load, the list
-  is shown at once from the cache, and only records changed since the last visit are requested (`updated_after`), so a
-  visit usually costs three small API requests. Changing the type or level range needs no request. *Sign out* clears it.
-- **Pages**: 1,000 items per page, with previous/next navigation.
-- **Audio (vocabulary only)**: revealing a vocabulary card plays its pronunciation automatically (toggle *Autoplay vocabulary audio when revealed*). *▶ Play* replays it, and *⇄ Other voice* switches voice actor when WaniKani provides more than one. Audio is only played on a click, never when the list is re-rendered, and clicking the audio buttons does not hide the card.
-- **Toolbar** (stays at the top): item count, a thin bar for revealed cards, *Study*, shuffle, show/hide all, compact view,
-  and the quick mistake and JLPT chips on one line.
-- **Cards**: one column on phones, two or three on wider screens; a compact view shows one short row per card.
-  Japanese text uses Noto Sans JP on every device.
-- **Order** (⇅ in the toolbar): level (WaniKani order), most misses, hardest (leech score), recently missed,
-  JLPT N5 → N1, most frequent, SRS stage, next review, random. The ↓/↑ button reverses the order: the list becomes its exact mirror, except that items without a value (never reviewed, no frequency…) stay last; on a random order it turns the current one around. The shuffle button draws a new random order.
-  Cards with misses also show their overall % correct.
-- **Keyboard**: ↑/↓ (or k/j) move between cards, Space or Enter reveals.
-- **Study mode**: one card at a time over the current list (in its current order). Space, ← or → reveals the answer; then
-  *Didn’t know* (1 or ←) and *Knew it* (2 or →) move on. At the end, the missed cards are listed with their answers
-  and can be studied again. Leaving early (✕ or Esc) shows the results for the cards answered so far. Answers are only kept for the
-  session, nothing is sent to WaniKani.
-  - **Time**: the results show the total time, the average per card, and, when a study was stopped, a projection of the time the
-    cards left will take at that pace. Only the time a card is on screen counts: it pauses when the tab is hidden.
-  - **Pause**: *Pause* (P) or *Continue later* saves the study in this browser, so it can be resumed later. It is shown above the
-    list with *Continue* and *Discard*. Only one paused study is kept: pausing another one replaces it. The save holds card ids and
-    timings only, and is cleared on *Sign out*.
-- **Theme**: auto (follows the system), light or dark.
+![The review list, filtered on items missed in the last 7 days at JLPT N5 to N3, with some cards revealed](docs/screenshot.png)
 
-### Mistake definitions
+It is a static page (HTML, CSS and plain JavaScript, no build step, no server). It reads your data from the WaniKani
+API and never writes to it: your reviews and SRS progress are left untouched.
 
-WaniKani no longer exposes the time of each answer: `GET /reviews` is deprecated and returns nothing.
-Recent misses are deduced from `review_statistics`, synced incrementally with `updated_after`:
+## Features
 
-- A review records one final correct answer per part, so a part answered wrong during the review ends with
-  `current_streak = 1` (see *Create a Review* in the API docs). `current_streak = 1` on a part that has wrong
-  answers means the item's **last review had a miss**.
-- `data_updated_at` of the statistic is the time of that last review.
-- *Missed in the last 24 h / 48 h / 7 days*: the last review had a miss and happened in that period.
-  A miss followed by a correct review in the same period is not shown.
-- *Leech*: at least 10 misses in total, and the leech score of the community "Leech Training" script,
-  `incorrect / current_streak ^ 1.5`, computed for the meaning and the reading, is 4 or more on one of them; burned
-  items are left out (thresholds at the top of `app.js`). The score is high for items missed often *and* recently.
-  The overall % correct is not used: on an account with many reviews it stays between 80% and 90% for almost every
-  item, so it hardly tells leeches apart. With these thresholds, a level-60 account had 71 leeches. *Hardest first* also sorts by this score.
-- *Never missed*: at least one answer, and no wrong answer.
+**Review list**
+- Meaning and reading stay hidden until you tap a card (tap again to hide them). Radicals have no reading.
+- Vocabulary audio plays when a card is revealed (can be turned off), with a button to replay it or switch voice actor.
+- Each card shows its level, JLPT level, SRS stage and, once missed, its number of misses and overall % correct.
+- Compact view, one to three columns depending on the screen, light and dark themes, 1,000 items per page.
+- Keyboard: ↑/↓ (or k/j) to move between cards, Space or Enter to reveal.
 
-The statistics cache is stored in the browser and cleared on *Sign out*.
+**Filters**: every filter is a group of chips that applies at once.
+Chips of one group add up (N5 + N4); groups combine (N5 + N4 *and* missed this week). No chip in a group means no
+constraint, and each chip shows how many items it would match. The groups:
 
+| Group | Chips |
+| --- | --- |
+| Type | Radicals, kanji, vocabulary (kana-only vocabulary included) |
+| Level | Min and max level |
+| SRS stage | Not started, Apprentice, Guru, Master, Enlightened, Burned |
+| Reviews | Available now |
+| Mistakes | Missed in the last 24 h, 48 h or 7 days, leeches, never missed (see [below](#mistakes-and-leeches)) |
+| JLPT | N5 to N1, not in the JLPT lists |
+| Frequency | Top 500, 501–1,000, … 5,001–10,000, rarer (pick several to get a top N) |
+| School grade | Grade 1 to 6, secondary school, jinmeiyō, not jōyō (for a word: its hardest kanji) |
+| Word type | Nouns, verbs (godan, ichidan, する, transitive, intransitive), adjectives, adverbs, counters… |
 
-## Japanese level filters
+The mistake and JLPT chips also sit above the list. JLPT, frequency, grade and word type leave radicals out.
 
-WaniKani does not provide JLPT levels or frequency, so they come from `data/japanese.json`, a static file built by
-`scripts/build_japanese_data.py` from open data:
+**Order**: level (WaniKani order), most misses, hardest (leech score), recently missed, JLPT, frequency, SRS stage,
+next review or random, and a button to reverse it.
 
-| Filter | Kanji | Vocabulary |
+**Study mode**: goes through the current list one card at a time, in its current order.
+Reveal with Space, ← or →, then answer *Didn't know* (1 or ←) or *Knew it* (2 or →).
+The results show your score, the time spent, and the missed cards with their answers, ready to be studied again;
+leaving early shows the results so far. A study can be paused and resumed later in the same browser.
+These answers are only for you: nothing is sent to WaniKani.
+
+## Privacy and API use
+
+- The **API token** is stored in your browser (`localStorage`) and only sent to `api.wanikani.com`. A read-only token
+  is enough: create one in WaniKani under *Settings → API Tokens*. *Sign out* removes it.
+- Your **data** (subjects, assignments, review statistics) is cached in your browser (IndexedDB and `localStorage`),
+  so later visits only ask WaniKani for what changed since the last one, usually three small requests.
+  *Sign out* clears this cache too.
+- No analytics, no tracking, no server of its own. Besides the WaniKani API, the page loads the Noto Sans JP font from
+  Google Fonts and its own static files from GitHub Pages; audio files and radical images come from WaniKani
+  (`files.wanikani.com`).
+
+## Mistakes and leeches
+
+The WaniKani API no longer gives the time of each answer (`GET /reviews` is deprecated and returns nothing),
+so recent mistakes are deduced from the review statistics:
+
+- During a review, a part (meaning or reading) answered wrong must be answered again until it is right, so its
+  current streak of correct answers ends at 1. A streak of 1 on a part that has wrong answers therefore means
+  **the last review of the item had a miss**, and the statistic's `data_updated_at` is the time of that review.
+- **Missed in the last 24 h / 48 h / 7 days**: the last review had a miss and took place in that period.
+  A miss followed by a correct review within the same period is not visible anymore.
+- **Leech**: at least 10 misses in total, a leech score of 4 or more, and not burned. The leech score is the one
+  used by the community *Leech Training* script: for the meaning and the reading,
+  `incorrect / current_streak ^ 1.5`, keeping the higher one. It is high for items missed often *and* recently.
+  The overall % correct is not used, as it stays between 80% and 90% for almost every item once an account has
+  many reviews. The thresholds are at the top of `app.js`.
+- **Never missed**: answered at least once, never wrong.
+
+## JLPT, frequency and school grade
+
+WaniKani does not provide these, so they come from `data/japanese.json`, built from open data by
+`scripts/build_japanese_data.py`:
+
+| | Kanji | Vocabulary |
 | --- | --- | --- |
-| JLPT | [kanji-data](https://github.com/davidluzgouveia/kanji-data) (MIT), from Jonathan Waller's lists (same levels as [wkstats](https://www.wkstats.com/items/jlpt)) | Jonathan Waller's lists, via [yomitan-jlpt-vocab](https://github.com/stephenmk/yomitan-jlpt-vocab) (linked to JMdict entries) and [open-anki-jlpt-decks](https://github.com/jamsinclair/open-anki-jlpt-decks) (keeps affixes such as 〜円) |
-| Frequency | Newspaper rank from KANJIDIC (top 2,500 kanji) | JMdict newspaper frequency bands (`nf01`–`nf48`, 500 words each) |
-| School grade | KANJIDIC grade: 1–6, secondary school, jinmeiyō | Grade of the word's hardest kanji |
+| JLPT | Jonathan Waller's lists, via [kanji-data](https://github.com/davidluzgouveia/kanji-data) | Jonathan Waller's lists, via [yomitan-jlpt-vocab](https://github.com/stephenmk/yomitan-jlpt-vocab) (linked to JMdict entries) and [open-anki-jlpt-decks](https://github.com/jamsinclair/open-anki-jlpt-decks) |
+| Frequency | Newspaper rank (KANJIDIC, top 2,500) | JMdict newspaper frequency bands (500 words each) |
+| School grade | KANJIDIC | Grade of the word's hardest kanji |
 | Word type | – | WaniKani parts of speech |
 
-The JLPT has published no official lists since 2010; Jonathan Waller's lists (tanos.co.uk) are the usual reference.
-A word gets a level when its WaniKani spelling **and** reading match a listed word (日 read ひ is N4, not the N5 of 日 read
-にち). When nothing matches exactly, the level of the same JMdict entry is used, so a word listed only in kana (おととし)
-still gives its level to the kanji spelling (一昨年). Frequency also comes from the JMdict entry with the matching reading.
-About 3,800 of 6,800 WaniKani words are on the lists.
-KANJIDIC and JMdict are © EDRDG, used under CC BY-SA 4.0.
+The JLPT has published no official lists since 2010; Waller's lists are the usual reference (they are also used by
+jisho.org and wkstats). A word gets a level when both its WaniKani spelling **and** reading match a listed word
+(日 read ひ is N4, 日 read にち is N3). Otherwise, the level of the same JMdict entry is used, so a word listed in kana
+only (おととし) still gives its level to its kanji spelling (一昨年). About 3,800 of the 6,800 WaniKani words are on
+the lists.
 
-To rebuild the file (the token is read from the environment and only sent to `api.wanikani.com`):
+To rebuild the file (the token is only read from the environment and sent to `api.wanikani.com`):
 
 ```bash
 WANIKANI_TOKEN=your-token python3 scripts/build_japanese_data.py
 ```
 
-## Run locally
+## Development
 
-Open `index.html` in your browser, or from the project folder:
+```text
+index.html                      the page
+app.js                          all the logic (API, cache, filters, cards, study mode)
+styles.css                      styles, light and dark themes
+data/japanese.json              JLPT, frequency and grade data (generated)
+scripts/build_japanese_data.py  builds data/japanese.json
+.github/workflows/pages.yml     deploys to GitHub Pages
+```
+
+There is no build step or dependency. Serve the folder with any static server, for example:
 
 ```bash
 python3 -m http.server 8000
 ```
 
-then go to <http://localhost:8000>.
+then open <http://localhost:8000>.
 
-## GitHub Pages
-
-The workflow `.github/workflows/pages.yml` publishes the site on every push to `main` (the `github-pages` environment only accepts deployments from the default branch).
-
-One-time setup in GitHub:
-
-1. *Settings → Pages*
-2. Under *Build and deployment → Source*, choose **GitHub Actions**.
-
-The app is then available at `https://maxme.github.io/wanikani-quick-review/`.
+Every push to `main` deploys the site with GitHub Actions (*Settings → Pages → Source: GitHub Actions*). Only the files
+the site uses are published.
 
 ## Known limits
 
+- Recent misses are deduced, see [above](#mistakes-and-leeches): only the last review of each item is known.
 - Radicals without a text character are shown with their WaniKani image.
-- The "available now" filter uses `available_at` from the API, so it reflects the state at load time.
-- WaniKani API limit: 60 requests per minute. The app waits and retries when the limit is hit.
+- "Available now" reflects the time the list was loaded.
+- The WaniKani API allows 60 requests per minute; the app waits and retries when the limit is reached.
+  The first visit downloads everything (about 30 requests), later ones only the changes.
+
+## Credits and license
+
+- Not affiliated with WaniKani or Tofugu. WaniKani content (meanings, readings, audio, radical images) comes from
+  your account through the WaniKani API.
+- KANJIDIC and JMdict © [EDRDG](https://www.edrdg.org/), CC BY-SA 4.0. JLPT lists by Jonathan Waller
+  ([tanos.co.uk](http://www.tanos.co.uk/jlpt/)), CC BY. See the projects linked above for the derived data.
+- Code under the [GNU GPL v3](LICENSE).
