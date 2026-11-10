@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Quick review list for WaniKani radicals, kanji and vocabulary, with meanings and readings hidden until you click.">
   <title>WaniKani Quick Review</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <!-- One Japanese font on every device; the system fonts stay as fallbacks. -->
@@ -81,6 +83,14 @@
 
     <!-- Results -->
     <section id="results" hidden>
+      <!-- A study paused in this browser, to continue later. -->
+      <div id="study-resume" class="resume" hidden>
+        <p id="resume-text"></p>
+        <div class="resume-actions">
+          <button id="resume-continue" class="primary small" type="button">Continue</button>
+          <button id="resume-discard" class="ghost small" type="button">Discard</button>
+        </div>
+      </div>
       <!-- Sticky bar: count, revealed progress, actions and quick filters, in as little height as possible. -->
       <div class="toolbar">
         <div class="toolbar-row">
@@ -122,7 +132,10 @@
   <div id="study-view" class="study" role="dialog" aria-modal="true" aria-label="Study" tabindex="-1" hidden>
     <div class="study-top">
       <span id="study-progress" class="study-progress"></span>
-      <button id="study-close" class="icon-btn" type="button" title="Close (Esc)" aria-label="Close">✕</button>
+      <div class="study-top-actions">
+        <button id="study-pause" class="ghost small" type="button" title="Pause and continue later (P)">Pause<kbd>P</kbd></button>
+        <button id="study-close" class="icon-btn" type="button" title="Close (Esc)" aria-label="Close">✕</button>
+      </div>
     </div>
     <div class="progress"><div id="study-bar" class="progress-fill"></div></div>
     <div id="study-stage" class="study-stage"></div>

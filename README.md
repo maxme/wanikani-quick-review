@@ -33,6 +33,11 @@ Each item shows its Japanese text on the left. The **meaning** and **reading** s
   *Didn’t know* (1 or ←) and *Knew it* (2 or →) move on. At the end, the missed cards are listed with their answers
   and can be studied again. Leaving early (✕ or Esc) shows the results for the cards answered so far. Answers are only kept for the
   session, nothing is sent to WaniKani.
+  - **Time**: the results show the total time, the average per card, and, when a study was stopped, a projection of the time the
+    cards left will take at that pace. Only the time a card is on screen counts: it pauses when the tab is hidden.
+  - **Pause**: *Pause* (P) or *Continue later* saves the study in this browser, so it can be resumed later. It is shown above the
+    list with *Continue* and *Discard*. Only one paused study is kept: pausing another one replaces it. The save holds card ids and
+    timings only, and is cleared on *Sign out*.
 - **Theme**: auto (follows the system), light or dark.
 
 ### Mistake definitions

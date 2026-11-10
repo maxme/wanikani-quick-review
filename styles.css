@@ -718,6 +718,27 @@ kbd {
 .study-missed .meanings, .study-missed .readings { white-space: normal; }
 .card.static:active { transform: none; }
 .study-score { font-size: 3rem; font-weight: 700; }
+.study-stats { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.75rem 2rem; margin: 0.5rem 0 1.25rem; }
+.stat { display: flex; flex-direction: column; align-items: center; min-width: 6rem; }
+.stat-value { font-size: 1.3rem; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
+.stat-label { font-size: 0.8rem; color: var(--muted); }
+.study-top-actions { display: flex; align-items: center; gap: 0.5rem; }
+
+/* A paused study, above the list. */
+.resume {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  margin-bottom: 0.5rem;
+  padding: 0.6rem 0.9rem;
+  background: var(--panel);
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+}
+.resume p { margin: 0; }
+.resume-actions { display: flex; gap: 0.5rem; }
 
 /* Keyboard hints are noise on touch screens. */
 @media (hover: none) {
