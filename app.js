@@ -6,6 +6,8 @@
   const LEVEL_MAX = 60;
   const PAGE_SIZE = 1000;
   const HOUR = 60 * 60 * 1000;
+  // Timed study: time allowed for each card before it counts as wrong.
+  const TIMED_LIMIT_MS = 10 * 1000;
 
   // Leech score, as in the community "Leech Training" script: for the meaning and the reading separately,
   // incorrect answers / (current streak of correct answers) ^ 1.5; an item's score is the higher of the two.
@@ -27,7 +29,7 @@
   // A study paused in this browser (one at a time). Holds item ids and timings only.
   const STORAGE_STUDY = 'wk-quick-review.study';
 
-  const TYPE_LABEL = { radical: 'Radical', kanji: 'Kanji', vocabulary: 'Vocabulary' };
+  const TYPE_LABEL ={ radical: 'Radical', kanji: 'Kanji', vocabulary: 'Vocabulary' };
   const TYPE_ORDER = { radical: 0, kanji: 1, vocabulary: 2 };
   // The plain "reading" group of vocabulary gets no row label: the card already says "Reading".
   const READING_LABEL = { onyomi: 'On’yomi', kunyomi: 'Kun’yomi', nanori: 'Nanori', reading: '' };
@@ -218,6 +220,8 @@
     studyButtons: $('#study-buttons'),
     studyClose: $('#study-close'),
     studyPause: $('#study-pause'),
+    studyTimer: $('#study-timer'),
+    studyTimed: $('#study-timed'),
     resume: $('#study-resume'),
     resumeText: $('#resume-text'),
     resumeContinue: $('#resume-continue'),
@@ -259,6 +263,7 @@
       levelMax: Number(els.levelMax.value),
       filters: Object.fromEntries(Object.entries(state.filters).map(([key, set]) => [key, [...set]])),
       autoplay: els.autoplay.checked,
+      timed: study.timed,
       compact: document.body.classList.contains('compact'),
       sort: els.sort.value,
       reversed: state.reversed,
@@ -350,11 +355,15 @@
       setMessage('This browser has no Japanese voice, so kanji readings cannot be spoken.', true);
       return;
     }
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'ja-JP';
-    if (voice) utterance.voice = voice;
-    utterance.rate = 0.9;
-    speechSynthesis.speak(utterance);
+    try {
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = 'ja-JP';
+      if (voice) utterance.voice = voice;
+      utterance.rate = 0.9;
+      speechSynthesis.speak(utterance);
+    } catch {
+      setMessage('Read-aloud is not available in this browser.', true);
+    }
   }
 
   // Kanji have no WaniKani recording: their primary readings are spoken by the browser.
@@ -407,6 +416,7 @@
       }
     }
     if (typeof prefs.autoplay === 'boolean') els.autoplay.checked = prefs.autoplay;
+    if (typeof prefs.timed === 'boolean') study.timed = prefs.timed;
     setCompact(prefs.compact === true);
     if (SORTS[prefs.sort]) els.sort.value = prefs.sort;
     state.reversed = prefs.reversed === true;
@@ -853,6 +863,7 @@
           el('span', { class: 'jp', lang: 'ja' }, ...joinSpans(group.items, '、')),
         );
       });
+      // Vocabulary has WaniKani recordings; kanji get a spoken reading (see kanjiSpeech).
       nodes.push(el('div', { class: 'reading-line' },
         el('div', { class: 'readings' }, ...groups),
         item.audios.length ? buildAudioButtons(item, voiceIndex, handlers) : null));
@@ -1097,8 +1108,27 @@
   // answered: cards answered so far, over all the sittings of a paused study (knew + missed.length).
   // size: cards in the study (answered + still to come). all: the full list, to start again (null after a resume).
   // activeMs: time of the answered cards. cardMs / cardStart: the clock of the card on screen.
-  const study = { items: [], index: 0, revealed: false, missed: [], knew: 0, answered: 0, stopped: false, size: 0, all: null, activeMs: 0, cardMs: 0, cardStart: null };
+  // timed: each card has TIMED_LIMIT_MS on the card clock; past that, it counts as missed and the study moves on.
+  // timedOut: how many of the missed cards ran out of time.
+  const study = { items: [], index: 0, revealed: false, missed: [], knew: 0, answered: 0, stopped: false, size: 0, all: null, activeMs: 0, cardMs: 0, cardStart: null, timed: false, timedOut: 0 };
   const studyDone = () => study.stopped || study.index >= study.items.length;
+  const cardElapsed = () => study.cardMs + (study.cardStart === null ? 0 : performance.now() - study.cardStart);
+
+  // Ticks while a timed card is on screen: shows the countdown, and moves on when the time is up.
+  setInterval(() => {
+    if (!study.timed || studyDone() || study.cardStart === null) {
+      els.studyTimer.textContent = '';
+      return;
+    }
+    const left = TIMED_LIMIT_MS - cardElapsed();
+    if (left <= 0) {
+      study.timedOut += 1;
+      answerStudy(false);
+      return;
+    }
+    els.studyTimer.textContent = `${Math.ceil(left / 1000)} s`;
+    els.studyTimer.classList.toggle('urgent', left <= 3000);
+  }, 100);
 
   // The clock runs only while a card is on screen and the tab is visible.
   function clockStart() {
@@ -1122,7 +1152,8 @@
 
   function startStudy(items) {
     if (!items.length) return;
-    Object.assign(study, { items: [...items], all: [...items], index: 0, revealed: false, missed: [], knew: 0, answered: 0, stopped: false, size: items.length, activeMs: 0, cardMs: 0, cardStart: null });
+    // The timed choice is kept from the last study: it is set from the study view.
+    Object.assign(study, { items: [...items], all: [...items], index: 0, revealed: false, missed: [], knew: 0, answered: 0, stopped: false, size: items.length, activeMs: 0, cardMs: 0, cardStart: null, timedOut: 0 });
     showStudyView();
   }
 
@@ -1175,6 +1206,7 @@
       activeMs: study.activeMs,
       missed: study.missed.map((item) => item.id),
       remaining: study.items.slice(study.index).map((item) => item.id),
+      timedOut: study.timedOut,
     }));
     closeStudy();
     renderResume();
@@ -1193,8 +1225,22 @@
       setMessage('The paused study has no cards left.');
       return;
     }
-    Object.assign(study, { items: remaining, all: null, index: 0, revealed: false, missed, knew: saved.knew, answered: saved.answered, stopped: false, size: saved.answered + remaining.length, activeMs: saved.activeMs, cardMs: 0, cardStart: null });
+    Object.assign(study, { items: remaining, all: null, index: 0, revealed: false, missed, knew: saved.knew, answered: saved.answered, stopped: false, size: saved.answered + remaining.length, activeMs: saved.activeMs, cardMs: 0, cardStart: null, timedOut: saved.timedOut ?? 0 });
     showStudyView();
+  }
+
+  // The timed choice lives in the study view and is remembered in the preferences. Turning it on starts
+  // the countdown of the card on screen from 10 s.
+  function toggleTimed() {
+    study.timed = !study.timed;
+    if (study.timed && study.cardStart !== null) {
+      study.cardMs = 0;
+      study.cardStart = performance.now();
+    }
+    savePrefs();
+    renderStudy();
+    // Keeps Space on the card, not on this button.
+    els.studyView.focus();
   }
 
   function discardPausedStudy() {
@@ -1245,6 +1291,9 @@
   function renderStudy() {
     els.studyBar.style.width = `${(100 * study.answered) / study.size}%`;
     els.studyPause.hidden = studyDone();
+    els.studyTimer.hidden = studyDone() || !study.timed;
+    els.studyTimed.hidden = studyDone();
+    els.studyTimed.setAttribute('aria-pressed', String(study.timed));
     if (studyDone()) {
       const left = study.size - study.answered;
       const average = study.answered ? study.activeMs / study.answered : 0;
@@ -1253,7 +1302,9 @@
         : `Done: ${study.size} card${study.size > 1 ? 's' : ''}`;
       els.studyStage.replaceChildren(el('div', { class: 'study-summary' },
         el('div', { class: 'study-score' }, `${study.knew} / ${study.answered}`),
-        el('p', {}, study.missed.length ? `${study.missed.length} missed:` : 'You knew them all.'),
+        el('p', {}, study.missed.length
+          ? `${study.missed.length} missed${study.timedOut ? ` (${study.timedOut} out of time)` : ''}:`
+          : 'You knew them all.'),
         el('div', { class: 'study-stats' },
           statBlock(formatDuration(study.activeMs), 'Total time'),
           statBlock(study.answered ? formatAverage(average) : '–', 'Average per card'),
@@ -1271,6 +1322,7 @@
     }
     const item = study.items[study.index];
     els.studyProgress.textContent = `${study.answered + 1} / ${study.size}`;
+    if (study.timed) els.studyTimer.textContent = `${TIMED_LIMIT_MS / 1000} s`;
     const content = el('div', { class: 'answer-content' });
     const voice = () => state.voice.get(item.id) ?? 0;
     const renderAnswer = () => content.replaceChildren(...buildAnswer(item, voice(), {
@@ -1343,6 +1395,7 @@
     // Space/Enter on a focused study button presses that button.
     else if (e.target.closest?.('#study-view button') && (e.key === ' ' || e.key === 'Enter')) handled = false;
     else if ((e.key === 'p' || e.key === 'P') && study.index < study.items.length) pauseStudy();
+    else if ((e.key === 't' || e.key === 'T') && !done) toggleTimed();
     else if (done && (e.key === ' ' || e.key === 'Enter') && study.missed.length) startStudy([...study.missed]);
     else if (done && (e.key === 'r' || e.key === 'R') && study.all) startStudy(study.all);
     // Before the answer is shown, the answer keys (←/→, 1/2) also just show it; pressed again, they answer.
@@ -1486,6 +1539,7 @@
   });
 
   els.autoplay.addEventListener('change', savePrefs);
+  els.studyTimed.addEventListener('click', toggleTimed);
 
   els.prevPage.addEventListener('click', () => {
     state.page -= 1;

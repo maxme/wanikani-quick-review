@@ -76,6 +76,7 @@
           Autoplay pronunciation when revealed (vocabulary and kanji)
         </label>
 
+
         <button type="submit" class="primary">Refresh from WaniKani</button>
       </form>
       </details>
@@ -133,6 +134,8 @@
     <div class="study-top">
       <span id="study-progress" class="study-progress"></span>
       <div class="study-top-actions">
+        <span id="study-timer" class="study-timer" hidden></span>
+        <button id="study-timed" class="ghost small" type="button" aria-pressed="false" title="Timed: 10 s per card, a card left unanswered counts as wrong (T)">Timed<kbd>T</kbd></button>
         <button id="study-pause" class="ghost small" type="button" title="Pause and continue later (P)">Pause<kbd>P</kbd></button>
         <button id="study-close" class="icon-btn" type="button" title="Close (Esc)" aria-label="Close">✕</button>
       </div>
