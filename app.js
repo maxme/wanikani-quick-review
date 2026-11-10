@@ -12,10 +12,10 @@
   // It is high for items missed often AND missed recently (the streak restarts at 1 after a miss), unlike the
   // overall % correct, which barely moves once an item has many correct answers.
   // Leech: at least LEECH_MIN_MISTAKES misses in total, a score of at least LEECH_SCORE, and not burned.
-  // With 10 and 3: 100 leeches on a real level-60 account (on the part with the most misses: missed at the last
-  // review, or 9+ misses with a streak of 2, 16+ with a streak of 3…).
+  // With 10 and 4: 71 leeches on a real level-60 account (on one part: missed at the last review with 4+ misses
+  // there, or 12+ misses with a streak of 2, 21+ with a streak of 3…).
   const LEECH_MIN_MISTAKES = 10;
-  const LEECH_SCORE = 3;
+  const LEECH_SCORE = 4;
 
   // Storage keys are unchanged so existing tokens and preferences keep working.
   const STORAGE_TOKEN = 'wk-quick-review.token';
@@ -82,7 +82,7 @@
     {
       key: 'mistakes', label: 'Mistakes', quick: true,
       hint: 'A miss is counted when the last review of an item had a wrong answer and happened within the period. '
-        + 'Leech: 10+ misses, missed often and recently (leech score of 3 or more: misses on the meaning or reading '
+        + 'Leech: 10+ misses, missed often and recently (leech score of 4 or more: misses on the meaning or reading '
         + 'divided by its current correct streak ^ 1.5), not burned.',
       options: [['missed-24h', 'Missed 24 h'], ['missed-48h', 'Missed 48 h'], ['missed-7d', 'Missed 7 days'],
         ['leech', 'Leeches'], ['never', 'Never missed']],
