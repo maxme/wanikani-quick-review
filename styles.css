@@ -723,6 +723,9 @@ kbd {
 .stat-value { font-size: 1.3rem; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
 .stat-label { font-size: 0.8rem; color: var(--muted); }
 .study-top-actions { display: flex; align-items: center; gap: 0.5rem; }
+/* Timed study: the countdown of the current card; it turns red in the last 3 seconds. */
+.study-timer { min-width: 3.5rem; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text); }
+.study-timer.urgent { color: var(--danger); }
 
 /* A paused study, above the list. */
 .resume {

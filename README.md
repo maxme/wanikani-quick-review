@@ -35,6 +35,9 @@ Each item shows its Japanese text on the left. The **meaning** and **reading** s
   session, nothing is sent to WaniKani.
   - **Time**: the results show the total time, the average per card, and, when a study was stopped, a projection of the time the
     cards left will take at that pace. Only the time a card is on screen counts: it pauses when the tab is hidden.
+  - **Timed study** (filters panel, saved): each card has 10 seconds on screen. If it is not answered in time, it counts as
+    *Didn’t know* and the study moves on. The countdown is shown in the study bar and turns red in the last 3 seconds. The
+    summary says how many misses were out of time.
   - **Pause**: *Pause* (P) or *Continue later* saves the study in this browser, so it can be resumed later. It is shown above the
     list with *Continue* and *Discard*. Only one paused study is kept: pausing another one replaces it. The save holds card ids and
     timings only, and is cleared on *Sign out*.
