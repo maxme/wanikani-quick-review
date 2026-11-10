@@ -25,7 +25,7 @@ Each item shows its Japanese text on the left. The **meaning** and **reading** s
   and the quick mistake and JLPT chips on one line.
 - **Cards**: one column on phones, two or three on wider screens; a compact view shows one short row per card.
   Japanese text uses Noto Sans JP on every device.
-- **Order** (⇅ in the toolbar): level (WaniKani order), most misses, hardest (lowest % correct), recently missed,
+- **Order** (⇅ in the toolbar): level (WaniKani order), most misses, hardest (leech score), recently missed,
   JLPT N5 → N1, most frequent, SRS stage, next review, random. The ↓/↑ button reverses the order: the list becomes its exact mirror, except that items without a value (never reviewed, no frequency…) stay last; on a random order it turns the current one around. The shuffle button draws a new random order.
   Cards with misses also show their overall % correct.
 - **Keyboard**: ↑/↓ (or k/j) move between cards, Space or Enter reveals.
@@ -46,7 +46,11 @@ Recent misses are deduced from `review_statistics`, synced incrementally with `u
 - `data_updated_at` of the statistic is the time of that last review.
 - *Missed in the last 24 h / 48 h / 7 days*: the last review had a miss and happened in that period.
   A miss followed by a correct review in the same period is not shown.
-- *Leech*: at least 10 wrong answers in total, and under 80% correct overall (thresholds at the top of `app.js`).
+- *Leech*: the leech score of the community "Leech Training" script, `incorrect / current_streak ^ 1.5`, computed for
+  the meaning and the reading, is 4 or more on one of them, and the item is not burned (threshold at the top of `app.js`).
+  It is high for items missed often *and* recently. The overall % correct is not used: on an account with many
+  reviews it stays between 80% and 90% for almost every item, so it hardly tells leeches apart. With 4, a level-60
+  account has about 100 leeches. *Hardest first* also sorts by this score.
 - *Never missed*: at least one answer, and no wrong answer.
 
 The statistics cache is stored in the browser and cleared on *Sign out*.

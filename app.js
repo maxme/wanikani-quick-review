@@ -7,18 +7,21 @@
   const PAGE_SIZE = 1000;
   const HOUR = 60 * 60 * 1000;
 
-  // Leech: at least LEECH_MIN_MISTAKES wrong answers and an overall correct rate below LEECH_MAX_PERCENT.
-  // Calibrated on a real account, where most items sit between 83% and 96% correct.
-  const LEECH_MIN_MISTAKES = 10;
-  const LEECH_MAX_PERCENT = 80;
+  // Leech score, as in the community "Leech Training" script: for the meaning and the reading separately,
+  // incorrect answers / (current streak of correct answers) ^ 1.5; an item's score is the higher of the two.
+  // It is high for items missed often AND missed recently (the streak restarts at 1 after a miss), unlike the
+  // overall % correct, which barely moves once an item has many correct answers.
+  // Leech: score of at least LEECH_SCORE and not burned. With 4, about 100 leeches on a real level-60 account
+  // (4 misses on a part just missed, 12 with a streak of 2, 21 with a streak of 3…).
+  const LEECH_SCORE = 4;
 
   // Storage keys are unchanged so existing tokens and preferences keep working.
   const STORAGE_TOKEN = 'wk-quick-review.token';
   const STORAGE_PREFS = 'wk-quick-review.prefs';
   const STORAGE_THEME = 'wk-quick-review.theme';
-  // v2: the cache entries now hold the last-review miss flag; older caches are dropped and fully re-synced.
-  const STORAGE_STATS = 'wk-quick-review.stats.v2';
-  const OLD_STORAGE_STATS = 'wk-quick-review.stats';
+  // v3: the cache entries now hold the leech score; older caches are dropped and fully re-synced.
+  const STORAGE_STATS = 'wk-quick-review.stats.v3';
+  const OLD_STORAGE_STATS = ['wk-quick-review.stats', 'wk-quick-review.stats.v2'];
 
   const TYPE_LABEL = { radical: 'Radical', kanji: 'Kanji', vocabulary: 'Vocabulary' };
   const TYPE_ORDER = { radical: 0, kanji: 1, vocabulary: 2 };
@@ -75,7 +78,8 @@
     {
       key: 'mistakes', label: 'Mistakes', quick: true,
       hint: 'A miss is counted when the last review of an item had a wrong answer and happened within the period. '
-        + 'Leech: 10+ misses and under 80% correct.',
+        + 'Leech: missed often and recently (leech score of 4 or more: misses on the meaning or reading divided by its '
+        + 'current correct streak ^ 1.5), not burned.',
       options: [['missed-24h', 'Missed 24 h'], ['missed-48h', 'Missed 48 h'], ['missed-7d', 'Missed 7 days'],
         ['leech', 'Leeches'], ['never', 'Never missed']],
       test: (item, v, now) => matchesMistake(item, v, now),
@@ -131,8 +135,8 @@
     },
     misses: { label: 'Most misses', reversedLabel: 'Fewest misses', keys: [[(i) => i.history.wrong, -1]] },
     difficulty: {
-      label: 'Hardest (lowest % correct)', reversedLabel: 'Easiest (highest % correct)',
-      keys: [[(i) => i.history.percentCorrect, 1], [(i) => i.history.wrong, -1]],
+      label: 'Hardest (leech score)', reversedLabel: 'Easiest (leech score)',
+      keys: [[(i) => (i.history.answered ? i.history.leechScore : null), -1], [(i) => i.history.wrong, -1]],
     },
     recent: { label: 'Recently missed', reversedLabel: 'Missed longest ago', keys: [[lastMissAt, -1]] },
     jlpt: { label: 'JLPT (N5 → N1)', reversedLabel: 'JLPT (N1 → N5)', keys: [[(i) => i.jlpt, -1]] },
@@ -590,8 +594,8 @@
   //   SRS interval). So "missed in the last N hours" = last review had a miss and happened within N hours.
   // Limit: a miss followed by a correct review inside the window is no longer visible.
   // The local copy is synced incrementally with updated_after.
-  // Cache entry per subject: [wrong, answered, percentCorrect, lastReviewAt(ms), lastReviewMissed(0|1)]
-  const NO_HISTORY = { wrong: 0, answered: 0, percentCorrect: null, lastReviewAt: 0, lastReviewMissed: false };
+  // Cache entry per subject: [wrong, answered, percentCorrect, lastReviewAt(ms), lastReviewMissed(0|1), leechScore]
+  const NO_HISTORY = { wrong: 0, answered: 0, percentCorrect: null, lastReviewAt: 0, lastReviewMissed: false, leechScore: 0 };
 
   function loadStatsCache() {
     try {
@@ -605,6 +609,8 @@
     storageSet(STORAGE_STATS, JSON.stringify(cache));
   }
 
+  const partLeechScore = (incorrect, streak) => (incorrect || 0) / Math.max(streak || 0, 1) ** 1.5;
+
   function compactStat(raw) {
     const d = raw.data;
     const lastReviewMissed = (d.meaning_current_streak === 1 && d.meaning_incorrect > 0)
@@ -615,6 +621,10 @@
       d.percentage_correct ?? null,
       Date.parse(raw.data_updated_at) || 0,
       lastReviewMissed ? 1 : 0,
+      Math.round(100 * Math.max(
+        partLeechScore(d.meaning_incorrect, d.meaning_current_streak),
+        partLeechScore(d.reading_incorrect, d.reading_current_streak),
+      )) / 100,
     ];
   }
 
@@ -637,14 +647,17 @@
 
   function buildStatsMap(cache) {
     const map = new Map();
-    for (const [id, [wrong, answered, percentCorrect, lastReviewAt, lastReviewMissed]] of Object.entries(cache.s)) {
-      map.set(Number(id), { wrong, answered, percentCorrect, lastReviewAt, lastReviewMissed: lastReviewMissed === 1 });
+    for (const [id, [wrong, answered, percentCorrect, lastReviewAt, lastReviewMissed, leechScore]] of Object.entries(cache.s)) {
+      map.set(Number(id), {
+        wrong, answered, percentCorrect, lastReviewAt, lastReviewMissed: lastReviewMissed === 1, leechScore,
+      });
     }
     return map;
   }
 
-  function isLeech(h) {
-    return h.wrong >= LEECH_MIN_MISTAKES && h.percentCorrect !== null && h.percentCorrect < LEECH_MAX_PERCENT;
+  // Burned items never come back in reviews: they are not leeches any more.
+  function isLeech(h, srsStage) {
+    return h.leechScore >= LEECH_SCORE && srsStage !== 9;
   }
 
   // Compact copy of a subject, as kept in the local cache: only what the cards and filters use.
@@ -683,7 +696,7 @@
       srsStage: assignment?.[0] ?? 0,
       availableAt: assignment?.[1] ?? null,
       history: h,
-      leech: isLeech(h),
+      leech: isLeech(h, assignment?.[0] ?? 0),
     };
   }
 
@@ -1250,7 +1263,7 @@
     // The statistics cache belongs to the account: remove it with the token.
     storageRemove(STORAGE_TOKEN);
     storageRemove(STORAGE_STATS);
-    storageRemove(OLD_STORAGE_STATS);
+    OLD_STORAGE_STATS.forEach(storageRemove);
     dbClear();
     state.raw = null;
     state.stats = new Map();
@@ -1372,7 +1385,7 @@
 
   // ---------- Startup ----------
   function init() {
-    storageRemove(OLD_STORAGE_STATS);
+    OLD_STORAGE_STATS.forEach(storageRemove);
     applyTheme(currentTheme());
     populateLevels();
     populateSorts();
