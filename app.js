@@ -11,9 +11,11 @@
   // incorrect answers / (current streak of correct answers) ^ 1.5; an item's score is the higher of the two.
   // It is high for items missed often AND missed recently (the streak restarts at 1 after a miss), unlike the
   // overall % correct, which barely moves once an item has many correct answers.
-  // Leech: score of at least LEECH_SCORE and not burned. With 4, about 100 leeches on a real level-60 account
-  // (4 misses on a part just missed, 12 with a streak of 2, 21 with a streak of 3…).
-  const LEECH_SCORE = 4;
+  // Leech: at least LEECH_MIN_MISTAKES misses in total, a score of at least LEECH_SCORE, and not burned.
+  // With 10 and 3: 100 leeches on a real level-60 account (on the part with the most misses: missed at the last
+  // review, or 9+ misses with a streak of 2, 16+ with a streak of 3…).
+  const LEECH_MIN_MISTAKES = 10;
+  const LEECH_SCORE = 3;
 
   // Storage keys are unchanged so existing tokens and preferences keep working.
   const STORAGE_TOKEN = 'wk-quick-review.token';
@@ -80,8 +82,8 @@
     {
       key: 'mistakes', label: 'Mistakes', quick: true,
       hint: 'A miss is counted when the last review of an item had a wrong answer and happened within the period. '
-        + 'Leech: missed often and recently (leech score of 4 or more: misses on the meaning or reading divided by its '
-        + 'current correct streak ^ 1.5), not burned.',
+        + 'Leech: 10+ misses, missed often and recently (leech score of 3 or more: misses on the meaning or reading '
+        + 'divided by its current correct streak ^ 1.5), not burned.',
       options: [['missed-24h', 'Missed 24 h'], ['missed-48h', 'Missed 48 h'], ['missed-7d', 'Missed 7 days'],
         ['leech', 'Leeches'], ['never', 'Never missed']],
       test: (item, v, now) => matchesMistake(item, v, now),
@@ -664,7 +666,7 @@
 
   // Burned items never come back in reviews: they are not leeches any more.
   function isLeech(h, srsStage) {
-    return h.leechScore >= LEECH_SCORE && srsStage !== 9;
+    return h.wrong >= LEECH_MIN_MISTAKES && h.leechScore >= LEECH_SCORE && srsStage !== 9;
   }
 
   // Compact copy of a subject, as kept in the local cache: only what the cards and filters use.

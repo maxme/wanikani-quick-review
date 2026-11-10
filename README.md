@@ -51,11 +51,11 @@ Recent misses are deduced from `review_statistics`, synced incrementally with `u
 - `data_updated_at` of the statistic is the time of that last review.
 - *Missed in the last 24 h / 48 h / 7 days*: the last review had a miss and happened in that period.
   A miss followed by a correct review in the same period is not shown.
-- *Leech*: the leech score of the community "Leech Training" script, `incorrect / current_streak ^ 1.5`, computed for
-  the meaning and the reading, is 4 or more on one of them, and the item is not burned (threshold at the top of `app.js`).
-  It is high for items missed often *and* recently. The overall % correct is not used: on an account with many
-  reviews it stays between 80% and 90% for almost every item, so it hardly tells leeches apart. With 4, a level-60
-  account has about 100 leeches. *Hardest first* also sorts by this score.
+- *Leech*: at least 10 misses in total, and the leech score of the community "Leech Training" script,
+  `incorrect / current_streak ^ 1.5`, computed for the meaning and the reading, is 3 or more on one of them; burned
+  items are left out (thresholds at the top of `app.js`). The score is high for items missed often *and* recently.
+  The overall % correct is not used: on an account with many reviews it stays between 80% and 90% for almost every
+  item, so it hardly tells leeches apart. With these thresholds, a level-60 account has about 100 leeches. *Hardest first* also sorts by this score.
 - *Never missed*: at least one answer, and no wrong answer.
 
 The statistics cache is stored in the browser and cleared on *Sign out*.
