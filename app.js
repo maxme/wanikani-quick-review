@@ -8,9 +8,6 @@
   const HOUR = 60 * 60 * 1000;
   // Timed study: time allowed for each card before it counts as wrong.
   const TIMED_LIMIT_MS = 10 * 1000;
-  // Firefox on macOS adds a sound at the end of every speech synthesis reading, in every voice (checked with
-  // Kyoko and Kyoko (Enhanced)); Chrome and Safari on the same Mac do not. Kanji speech is not offered there.
-  const SPEECH_END_SOUND = /Firefox\//.test(navigator.userAgent) && /Macintosh/.test(navigator.userAgent);
 
   // Leech score, as in the community "Leech Training" script: for the meaning and the reading separately,
   // incorrect answers / (current streak of correct answers) ^ 1.5; an item's score is the higher of the two.
@@ -758,7 +755,7 @@
       ...fields,
       ...japaneseInfo(jp, subject.type, subject.glyph),
       // Kanji get a spoken reading (browser speech synthesis); the cached subject keeps no audio for them.
-      ...(subject.type === 'kanji' && SPEECH && !SPEECH_END_SOUND ? { audios: kanjiSpeech(subject.readings) } : {}),
+      ...(subject.type === 'kanji' && SPEECH ? { audios: kanjiSpeech(subject.readings) } : {}),
       srsStage: assignment?.[0] ?? 0,
       availableAt: assignment?.[1] ?? null,
       history: h,
