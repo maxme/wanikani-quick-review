@@ -323,8 +323,9 @@
   // speech synthesis ({ tts: text }) with a Japanese voice.
   function playAudio(audio) {
     if (!audio) return;
-    if (player) player.pause();
-    if (SPEECH) speechSynthesis.cancel();
+    if (player && !player.paused) player.pause();
+    // Only cancel speech that is actually running: cancel() right before speak() can make some engines pop.
+    if (SPEECH && (speechSynthesis.speaking || speechSynthesis.pending)) speechSynthesis.cancel();
     if (audio.tts) {
       speak(audio.tts);
       return;
@@ -356,10 +357,11 @@
       return;
     }
     try {
-      const utterance = new SpeechSynthesisUtterance(text);
+      // A final 。 lets the engine end the word as a sentence instead of cutting it off, which some engines do
+      // with an audible click. The default rate is kept: other rates are time-stretched and can crackle.
+      const utterance = new SpeechSynthesisUtterance(`${text}。`);
       utterance.lang = 'ja-JP';
       if (voice) utterance.voice = voice;
-      utterance.rate = 0.9;
       speechSynthesis.speak(utterance);
     } catch {
       setMessage('Read-aloud is not available in this browser.', true);
