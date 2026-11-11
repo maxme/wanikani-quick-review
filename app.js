@@ -9,7 +9,7 @@
   // Timed study: time allowed for each card before it counts as wrong.
   const TIMED_LIMIT_MS = 10 * 1000;
   // Firefox on macOS adds a sound at the end of every speech synthesis reading, in every voice (checked with
-  // Kyoko and Kyoko (Enhanced)); Chrome and Safari on the same Mac do not. The read-aloud button is hidden there.
+  // Kyoko and Kyoko (Enhanced)); Chrome and Safari on the same Mac do not. Kanji speech is not offered there.
   const SPEECH_END_SOUND = /Firefox\//.test(navigator.userAgent) && /Macintosh/.test(navigator.userAgent);
 
   // Leech score, as in the community "Leech Training" script: for the meaning and the reading separately,
@@ -322,17 +322,63 @@
   // One shared player: starting a new clip stops the previous one.
   let player = null;
 
-  function playAudio(url) {
+  // Plays one pronunciation: a WaniKani recording ({ url }) or, for kanji, which have none, the browser's
+  // speech synthesis ({ tts: text }) with a Japanese voice.
+  function playAudio(audio) {
+    if (!audio) return;
+    if (player && !player.paused) player.pause();
+    // Only cancel speech that is actually running: cancel() right before speak() can make some engines pop.
+    if (SPEECH && (speechSynthesis.speaking || speechSynthesis.pending)) speechSynthesis.cancel();
+    if (audio.tts) {
+      speak(audio.tts);
+      return;
+    }
     try {
       if (!player) player = new Audio();
-      player.pause();
-      player.src = url;
+      player.src = audio.url;
       const playing = player.play();
       if (playing) playing.catch(() => setMessage('The audio could not be played.', true));
     } catch {
       setMessage('The audio could not be played.', true);
     }
   }
+
+  const SPEECH = 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window;
+
+  function japaneseVoice() {
+    const voices = speechSynthesis.getVoices();
+    const ja = voices.filter((v) => v.lang.toLowerCase().replace('_', '-').startsWith('ja'));
+    // Local voices answer at once and also work offline.
+    return { voice: ja.find((v) => v.localService) ?? ja[0] ?? null, loaded: voices.length > 0 };
+  }
+
+  function speak(text) {
+    const { voice, loaded } = japaneseVoice();
+    // Voices load asynchronously; when the list is still empty, let the browser pick one for ja-JP.
+    if (!voice && loaded) {
+      setMessage('This browser has no Japanese voice, so kanji readings cannot be spoken.', true);
+      return;
+    }
+    try {
+      // A final 。 lets the engine end the word as a sentence instead of cutting it off, which some engines do
+      // with an audible click. The default rate is kept: other rates are time-stretched and can crackle.
+      const utterance = new SpeechSynthesisUtterance(`${text}。`);
+      utterance.lang = 'ja-JP';
+      if (voice) utterance.voice = voice;
+      speechSynthesis.speak(utterance);
+    } catch {
+      setMessage('Read-aloud is not available in this browser.', true);
+    }
+  }
+
+  // Kanji have no WaniKani recording: their primary readings are spoken by the browser.
+  function kanjiSpeech(readings) {
+    const all = readings.flatMap((group) => group.items);
+    const primary = all.filter((r) => r.primary);
+    const text = (primary.length ? primary : all.slice(0, 1)).map((r) => r.text).join('、');
+    return text ? [{ tts: text, voice: 'synthesized voice' }] : [];
+  }
+
 
   // ---------- Filters ----------
   function populateLevels() {
@@ -711,6 +757,8 @@
     return {
       ...fields,
       ...japaneseInfo(jp, subject.type, subject.glyph),
+      // Kanji get a spoken reading (browser speech synthesis); the cached subject keeps no audio for them.
+      ...(subject.type === 'kanji' && SPEECH && !SPEECH_END_SOUND ? { audios: kanjiSpeech(subject.readings) } : {}),
       srsStage: assignment?.[0] ?? 0,
       availableAt: assignment?.[1] ?? null,
       history: h,
@@ -820,61 +868,12 @@
           el('span', { class: 'jp', lang: 'ja' }, ...joinSpans(group.items, '、')),
         );
       });
-      // Vocabulary has WaniKani audio; a kanji gets its primary reading read aloud by the browser.
-      const primary = item.type === 'kanji' && !SPEECH_END_SOUND ? primaryReading(item) : null;
+      // Vocabulary has WaniKani recordings; kanji get a spoken reading (see kanjiSpeech).
       nodes.push(el('div', { class: 'reading-line' },
         el('div', { class: 'readings' }, ...groups),
-        item.audios.length ? buildAudioButtons(item, voiceIndex, handlers)
-          : primary ? buildSpeakButton(primary) : null));
+        item.audios.length ? buildAudioButtons(item, voiceIndex, handlers) : null));
     }
     return nodes;
-  }
-
-  // The reading WaniKani marks as primary (on’yomi or kun’yomi, whichever it is), with its group label.
-  function primaryReading(item) {
-    for (const group of item.readings) {
-      const primary = group.items.find((reading) => reading.primary);
-      if (primary) return { text: primary.text, label: group.label };
-    }
-    return null;
-  }
-
-  function buildSpeakButton({ text, label }) {
-    const button = el('button', {
-      type: 'button',
-      class: 'audio-btn speak-btn',
-      title: `Read aloud: ${text}${label ? ` (${label})` : ''}`,
-      'aria-label': `Read aloud: ${text}`,
-    }, '🔊');
-    button.addEventListener('click', (e) => {
-      e.stopPropagation();
-      speakReading(text);
-    });
-    return button;
-  }
-
-  // Reads a kanji reading with the browser's speech synthesis, using a Japanese voice when the device has one.
-  function speakReading(text) {
-    const unavailable = 'Read-aloud is not available in this browser.';
-    if (!('speechSynthesis' in window) || !window.SpeechSynthesisUtterance) {
-      setMessage(unavailable, true);
-      return;
-    }
-    try {
-      const voices = window.speechSynthesis.getVoices();
-      const japanese = voices.find((voice) => voice.lang?.toLowerCase().startsWith('ja'));
-      if (voices.length && !japanese) {
-        setMessage('No Japanese voice on this device: install one to hear readings.', true);
-        return;
-      }
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = 'ja-JP';
-      if (japanese) utterance.voice = japanese;
-      window.speechSynthesis.cancel();
-      window.speechSynthesis.speak(utterance);
-    } catch {
-      setMessage(unavailable, true);
-    }
   }
 
   // Small grey line: level, JLPT, SRS stage, misses. The type is given by the card colour (and the tile label).
@@ -909,12 +908,12 @@
     const renderAnswer = () => {
       const voiceIndex = state.voice.get(item.id) ?? 0;
       content.replaceChildren(...buildAnswer(item, voiceIndex, {
-        onPlay: () => playAudio(item.audios[state.voice.get(item.id) ?? 0].url),
+        onPlay: () => playAudio(item.audios[state.voice.get(item.id) ?? 0]),
         onSwitch: () => {
           const next = ((state.voice.get(item.id) ?? 0) + 1) % item.audios.length;
           state.voice.set(item.id, next);
           renderAnswer();
-          playAudio(item.audios[next].url);
+          playAudio(item.audios[next]);
         },
       }));
     };
@@ -926,7 +925,7 @@
       card.classList.toggle('revealed', on);
       card.setAttribute('aria-expanded', String(on));
       if (on && play && els.autoplay.checked && item.audios.length) {
-        playAudio(item.audios[state.voice.get(item.id) ?? 0].url);
+        playAudio(item.audios[state.voice.get(item.id) ?? 0]);
       }
     };
 
@@ -1332,11 +1331,11 @@
     const content = el('div', { class: 'answer-content' });
     const voice = () => state.voice.get(item.id) ?? 0;
     const renderAnswer = () => content.replaceChildren(...buildAnswer(item, voice(), {
-      onPlay: () => playAudio(item.audios[voice()].url),
+      onPlay: () => playAudio(item.audios[voice()]),
       onSwitch: () => {
         state.voice.set(item.id, (voice() + 1) % item.audios.length);
         renderAnswer();
-        playAudio(item.audios[voice()].url);
+        playAudio(item.audios[voice()]);
       },
     }));
     renderAnswer();
@@ -1358,11 +1357,11 @@
     const voice = () => state.voice.get(item.id) ?? 0;
     const content = el('div', { class: 'answer-content' });
     const renderAnswer = () => content.replaceChildren(...buildAnswer(item, voice(), {
-      onPlay: () => playAudio(item.audios[voice()].url),
+      onPlay: () => playAudio(item.audios[voice()]),
       onSwitch: () => {
         state.voice.set(item.id, (voice() + 1) % item.audios.length);
         renderAnswer();
-        playAudio(item.audios[voice()].url);
+        playAudio(item.audios[voice()]);
       },
     }));
     renderAnswer();
@@ -1376,7 +1375,7 @@
     renderStudy();
     els.studyView.focus();
     const item = study.items[study.index];
-    if (els.autoplay.checked && item.audios.length) playAudio(item.audios[state.voice.get(item.id) ?? 0].url);
+    if (els.autoplay.checked && item.audios.length) playAudio(item.audios[state.voice.get(item.id) ?? 0]);
   }
 
   function answerStudy(knew) {
