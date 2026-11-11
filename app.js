@@ -319,19 +319,12 @@
   // One shared player: starting a new clip stops the previous one.
   let player = null;
 
-  // Plays one pronunciation: a WaniKani recording ({ url }) or, for kanji, which have none, the browser's
-  // speech synthesis ({ tts: text }) with a Japanese voice.
+  // Plays one pronunciation (a WaniKani recording). Kanji have none, so they have no audio button.
   function playAudio(audio) {
     if (!audio) return;
-    if (player && !player.paused) player.pause();
-    // Only cancel speech that is actually running: cancel() right before speak() can make some engines pop.
-    if (SPEECH && (speechSynthesis.speaking || speechSynthesis.pending)) speechSynthesis.cancel();
-    if (audio.tts) {
-      speak(audio.tts);
-      return;
-    }
     try {
       if (!player) player = new Audio();
+      player.pause();
       player.src = audio.url;
       const playing = player.play();
       if (playing) playing.catch(() => setMessage('The audio could not be played.', true));
@@ -339,43 +332,6 @@
       setMessage('The audio could not be played.', true);
     }
   }
-
-  const SPEECH = 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window;
-
-  function japaneseVoice() {
-    const voices = speechSynthesis.getVoices();
-    const ja = voices.filter((v) => v.lang.toLowerCase().replace('_', '-').startsWith('ja'));
-    // Local voices answer at once and also work offline.
-    return { voice: ja.find((v) => v.localService) ?? ja[0] ?? null, loaded: voices.length > 0 };
-  }
-
-  function speak(text) {
-    const { voice, loaded } = japaneseVoice();
-    // Voices load asynchronously; when the list is still empty, let the browser pick one for ja-JP.
-    if (!voice && loaded) {
-      setMessage('This browser has no Japanese voice, so kanji readings cannot be spoken.', true);
-      return;
-    }
-    try {
-      // A final 。 lets the engine end the word as a sentence instead of cutting it off, which some engines do
-      // with an audible click. The default rate is kept: other rates are time-stretched and can crackle.
-      const utterance = new SpeechSynthesisUtterance(`${text}。`);
-      utterance.lang = 'ja-JP';
-      if (voice) utterance.voice = voice;
-      speechSynthesis.speak(utterance);
-    } catch {
-      setMessage('Read-aloud is not available in this browser.', true);
-    }
-  }
-
-  // Kanji have no WaniKani recording: their primary readings are spoken by the browser.
-  function kanjiSpeech(readings) {
-    const all = readings.flatMap((group) => group.items);
-    const primary = all.filter((r) => r.primary);
-    const text = (primary.length ? primary : all.slice(0, 1)).map((r) => r.text).join('、');
-    return text ? [{ tts: text, voice: 'synthesized voice' }] : [];
-  }
-
 
   // ---------- Filters ----------
   function populateLevels() {
@@ -754,8 +710,6 @@
     return {
       ...fields,
       ...japaneseInfo(jp, subject.type, subject.glyph),
-      // Kanji get a spoken reading (browser speech synthesis); the cached subject keeps no audio for them.
-      ...(subject.type === 'kanji' && SPEECH ? { audios: kanjiSpeech(subject.readings) } : {}),
       srsStage: assignment?.[0] ?? 0,
       availableAt: assignment?.[1] ?? null,
       history: h,
@@ -865,7 +819,7 @@
           el('span', { class: 'jp', lang: 'ja' }, ...joinSpans(group.items, '、')),
         );
       });
-      // Vocabulary has WaniKani recordings; kanji get a spoken reading (see kanjiSpeech).
+      // Only vocabulary has WaniKani recordings.
       nodes.push(el('div', { class: 'reading-line' },
         el('div', { class: 'readings' }, ...groups),
         item.audios.length ? buildAudioButtons(item, voiceIndex, handlers) : null));
