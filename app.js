@@ -8,6 +8,9 @@
   const HOUR = 60 * 60 * 1000;
   // Timed study: time allowed for each card before it counts as wrong.
   const TIMED_LIMIT_MS = 10 * 1000;
+  // Firefox on macOS adds a sound at the end of every speech synthesis reading, in every voice (checked with
+  // Kyoko and Kyoko (Enhanced)); Chrome and Safari on the same Mac do not. The read-aloud button is hidden there.
+  const SPEECH_END_SOUND = /Firefox\//.test(navigator.userAgent) && /Macintosh/.test(navigator.userAgent);
 
   // Leech score, as in the community "Leech Training" script: for the meaning and the reading separately,
   // incorrect answers / (current streak of correct answers) ^ 1.5; an item's score is the higher of the two.
@@ -818,7 +821,7 @@
         );
       });
       // Vocabulary has WaniKani audio; a kanji gets its primary reading read aloud by the browser.
-      const primary = item.type === 'kanji' ? primaryReading(item) : null;
+      const primary = item.type === 'kanji' && !SPEECH_END_SOUND ? primaryReading(item) : null;
       nodes.push(el('div', { class: 'reading-line' },
         el('div', { class: 'readings' }, ...groups),
         item.audios.length ? buildAudioButtons(item, voiceIndex, handlers)
